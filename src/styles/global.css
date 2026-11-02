@@ -2898,6 +2898,14 @@ html.is-drag-scrolling * {
   position: fixed;
   inset: 0;
   z-index: 150;
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+/* The page behind can't be scrolled while the guide is open */
+html.touring,
+html.touring body {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 .tour-hole {
   position: absolute;

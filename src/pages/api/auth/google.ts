@@ -11,7 +11,7 @@ import { siteOrigin } from '../../../lib/site-url';
 
 export const GET: APIRoute = async (ctx) => {
   const { url, cookies, redirect } = ctx;
-  if (!googleReady()) return redirect(`/?signin=1&google=off`, 303);
+  if (!googleReady()) return redirect(`/account?signin=1&google=off`, 303);
   const app = url.searchParams.get('app') === '1';
   const next = safeNext(url.searchParams.get('next'), '/');
   // A random value that must come back unchanged, so nobody can fake the reply

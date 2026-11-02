@@ -3,5 +3,6 @@
 import { safeNext } from '../lib/session';
 
 const next = safeNext(Astro.url.searchParams.get('next'), '/account');
-return Astro.redirect(`/?signin=1&next=${encodeURIComponent(next)}`);
+// Sign-in opens on the Account page (where people sign in), not on Home
+return Astro.redirect(next === '/account' ? '/account?signin=1' : `/account?signin=1&next=${encodeURIComponent(next)}`);
 ---

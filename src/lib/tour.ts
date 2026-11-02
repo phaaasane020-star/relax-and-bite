@@ -65,6 +65,15 @@ export function startTour(force = false): void {
     </div>`;
   document.body.append(layer);
   document.documentElement.classList.add('touring');
+  // The page behind stays still while the guide is open: no scrolling,
+  // swiping or pull-to-refresh (taps on the card's buttons still work)
+  const block = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  layer.addEventListener('touchmove', block, { passive: false });
+  layer.addEventListener('wheel', block, { passive: false });
+  layer.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
 
   const hole = layer.querySelector<HTMLElement>('.tour-hole')!;
   const card = layer.querySelector<HTMLElement>('.tour-card')!;

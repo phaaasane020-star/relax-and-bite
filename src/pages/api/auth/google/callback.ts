@@ -17,8 +17,8 @@ export const GET: APIRoute = async (ctx) => {
   const nonce = cookies.get('rb_google')?.value;
   cookies.delete('rb_google', { path: '/' });
   const code = url.searchParams.get('code');
-  if (!state || state.exp < Date.now() || !nonce || state.nonce !== nonce) return redirect('/?signin=1&google=failed', 303);
-  if (!code) return redirect('/?signin=1&google=cancelled', 303); // they closed Google's page
+  if (!state || state.exp < Date.now() || !nonce || state.nonce !== nonce) return redirect('/account?signin=1&google=failed', 303);
+  if (!code) return redirect('/account?signin=1&google=cancelled', 303); // they closed Google's page
 
   try {
     const customer = await finishGoogleSignIn(code, `${siteOrigin(url)}/api/auth/google/callback`);
@@ -34,7 +34,7 @@ export const GET: APIRoute = async (ctx) => {
     return redirect(state.next || '/', 303);
   } catch (e) {
     console.error('[google] sign-in failed:', (e as Error).message);
-    return redirect('/?signin=1&google=failed', 303);
+    return redirect('/account?signin=1&google=failed', 303);
   }
 };
 
