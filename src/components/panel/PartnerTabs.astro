@@ -1,0 +1,52 @@
+---
+// Tabs shared by the admin Partners pages.
+import { getPanelCounts } from '../../data/store';
+
+import Icon from '../Icon.astro';
+
+const path = Astro.url.pathname;
+const pending = (await getPanelCounts(null)).pendingApps;
+const tabs = [
+  { href: '/admin/applications', label: 'Applications', badge: pending },
+  { href: '/admin/vendors', label: 'Vendors', badge: 0 },
+  { href: '/admin/riders', label: 'Riders', badge: 0 },
+  { href: '/admin/admins', label: 'Admins', badge: 0 },
+];
+// The "Add" button for the list you're looking at
+const add =
+  path === '/admin/vendors'
+    ? { href: '/partner/register/vendor?add=1', label: 'Add vendor' }
+    : path === '/admin/riders'
+      ? { href: '/partner/register/rider?add=1', label: 'Add rider' }
+      : path === '/admin/admins'
+        ? { href: '/admin/admins?add=1', label: 'Add admin' }
+        : null;
+---
+
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Partners</h1>
+  {
+    add && (
+      <a href={add.href} class="btn btn-primary min-h-11">
+        <Icon name="plus" size={18} strokeWidth={2.4} /> {add.label}
+      </a>
+    )
+  }
+</div>
+<nav aria-label="Partners" class="mt-4 flex gap-6 border-b border-line overflow-x-auto hide-scrollbar">
+  {
+    tabs.map((t) => (
+      <a
+        href={t.href}
+        aria-current={path === t.href ? 'page' : undefined}
+        class:list={[
+          'pb-3 text-[0.9375rem] whitespace-nowrap no-underline border-b-2 flex items-center gap-2',
+          path === t.href ? 'border-brand text-ink font-bold' : 'border-transparent text-muted font-semibold hover:text-ink',
+        ]}
+      >
+        {t.label}
+        {t.badge > 0 && <span class="min-w-5 h-5 px-1.5 rounded-full bg-brand text-on-brand text-[0.6875rem] font-bold flex items-center justify-center">{t.badge}</span>}
+      </a>
+    ))
+  }
+</nav>

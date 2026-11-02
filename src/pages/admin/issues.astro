@@ -1,0 +1,122 @@
+---
+import { clientInfo } from '../../lib/client-info';
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Alert from '../../components/panel/Alert.astro';
+import Icon from '../../components/Icon.astro';
+import { audit, listIssues, resolveIssue } from '../../data/store';
+import { field, flash, takeFlash } from '../../lib/actions';
+import { dateTime, prettyPhone } from '../../lib/format';
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  try {
+    const id = field(form, 'id');
+    const resolution = field(form, 'resolution', 600);
+    await resolveIssue(id, resolution, Astro.locals.partner!.full_name);
+    await audit(`${Astro.locals.partner!.full_name} (admin)`, `Resolved report ${field(form, 'label')}: ${resolution}`, clientInfo(Astro));
+    flash(Astro.cookies, 'Report marked as resolved.');
+    return Astro.redirect('/admin/issues', 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const issues = await listIssues();
+const open = issues.filter((i) => i.status === 'open');
+const resolved = issues.filter((i) => i.status === 'resolved');
+const success = takeFlash(Astro.cookies);
+const roleTone = { customer: 'bg-brand-soft text-brand-ink', vendor: 'bg-warning-soft text-warning-ink', rider: 'bg-success-soft text-success' };
+const urgent = (category: string) => /accident|emergency|behaviour|not received/i.test(category);
+---
+
+<PanelLayout title="Reports" refresh={30}>
+  <Alert error={error} success={success} />
+  <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Reports</h1>
+  <p class="text-sm text-muted mt-1">Problems sent by customers, vendors and riders. Call the person back, then write what you did.</p>
+
+  {
+    open.length === 0 && (
+      <div class="card p-8 mt-6 flex items-center gap-3">
+        <Icon name="check" size={22} class="text-success" />
+        <p class="font-semibold">No open reports.</p>
+      </div>
+    )
+  }
+
+  <div class="mt-6 grid gap-4 xl:grid-cols-2">
+    {
+      open.map((i) => (
+        <article class:list={['card p-5 flex flex-col gap-3', urgent(i.category) && 'border-danger ring-[3px] ring-danger-soft']}>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class:list={['badge h-6 text-xs capitalize', roleTone[i.reporter_role]]}>{i.reporter_role}</span>
+            {urgent(i.category) && <span class="badge h-6 text-xs bg-danger-soft text-danger">Urgent</span>}
+            <span class="text-sm text-muted ml-auto">{dateTime(i.created_at)}</span>
+          </div>
+          <h2 class="text-lg font-extrabold">{i.category}</h2>
+          {i.message && <p class="text-[0.9375rem] text-ink-soft whitespace-pre-line">{i.message}</p>}
+          <dl class="grid gap-2 sm:grid-cols-2 text-sm">
+            <div><dt class="text-muted">From</dt><dd class="font-semibold">{i.reporter_name}</dd></div>
+            <div><dt class="text-muted">Phone</dt><dd class="font-semibold"><a href={`tel:${i.reporter_phone}`} class="text-ink tabular">{prettyPhone(i.reporter_phone)}</a></dd></div>
+            {i.order_code && <div><dt class="text-muted">Order</dt><dd class="font-semibold tabular"><a href="/admin/orders?view=all" class="text-brand">{i.order_code}</a></dd></div>}
+          </dl>
+          <div class="flex flex-wrap gap-2 pt-1">
+            <a href={`tel:${i.reporter_phone}`} class="btn btn-secondary"><Icon name="phone" size={18} /> Call back</a>
+            <button type="button" class="btn btn-primary" data-resolve={i.id} data-label={`${i.category}${i.order_code ? ` (${i.order_code})` : ''}`}>Mark resolved</button>
+          </div>
+        </article>
+      ))
+    }
+  </div>
+
+  {
+    resolved.length > 0 && (
+      <section class="mt-10" aria-labelledby="resolved-h">
+        <h2 id="resolved-h" class="section-title text-lg font-extrabold mb-3">Resolved</h2>
+        <ul class="card divide-y divide-line text-sm">
+          {resolved.slice(0, 30).map((i) => (
+            <li class="px-5 py-3 flex flex-col gap-1">
+              <span>
+                <strong>{i.category}</strong>
+                {i.order_code && <span class="text-muted">, {i.order_code}</span>}
+                <span class="text-muted">, from {i.reporter_name} ({i.reporter_role})</span>
+              </span>
+              <span class="text-muted">{i.resolution}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  <dialog id="resolve-dialog" class="sheet" aria-labelledby="resolve-title">
+    <form method="post" class="p-6 flex flex-col gap-4">
+      <input type="hidden" name="id" />
+      <input type="hidden" name="label" />
+      <h2 id="resolve-title" class="text-lg font-extrabold">Resolve report</h2>
+      <div>
+        <label for="resolution" class="field-label">What did you do?</label>
+        <textarea id="resolution" name="resolution" rows="3" class="field-input" required placeholder="For example, called the customer, refunded GH₵ 20 for the missing drink"></textarea>
+        <p class="field-hint">Saved in the activity log.</p>
+      </div>
+      <div class="flex gap-3">
+        <button type="button" data-close class="btn btn-secondary flex-1">Back</button>
+        <button type="submit" class="btn btn-primary flex-1">Mark resolved</button>
+      </div>
+    </form>
+  </dialog>
+</PanelLayout>
+
+<script>
+  const dialog = document.getElementById('resolve-dialog') as HTMLDialogElement;
+  const form = dialog.querySelector('form')!;
+  document.querySelectorAll<HTMLButtonElement>('[data-resolve]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      form.reset();
+      (form.elements.namedItem('id') as HTMLInputElement).value = btn.dataset.resolve!;
+      (form.elements.namedItem('label') as HTMLInputElement).value = btn.dataset.label!;
+      dialog.querySelector('#resolve-title')!.textContent = `Resolve: ${btn.dataset.label}`;
+      dialog.showModal();
+    }),
+  );
+</script>

@@ -1,0 +1,52 @@
+---
+// Support chats from customers. Waiting ones (last message from the customer) first.
+import PanelLayout from '../../../layouts/PanelLayout.astro';
+import Icon from '../../../components/Icon.astro';
+import { listSupportChats } from '../../../data/support';
+import { dateTime } from '../../../lib/format';
+
+const chats = await listSupportChats();
+const waiting = chats.filter((c) => c.status === 'open' && c.waiting_staff).length;
+---
+
+<PanelLayout title="Support" refresh={30}>
+  <div class="max-w-3xl">
+    <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Support</h1>
+    <p class="text-sm text-muted mt-1">
+      {waiting ? `${waiting} ${waiting === 1 ? 'chat is' : 'chats are'} waiting for a reply.` : 'No one is waiting for a reply.'} Customers write from Help in the app.
+    </p>
+
+    {
+      chats.length === 0 ? (
+        <div class="py-16 flex flex-col items-center text-center gap-2">
+          <span class="empty-tile"><Icon name="chat" size={30} /></span>
+          <p class="font-extrabold mt-3">No support chats yet</p>
+        </div>
+      ) : (
+        <ul class="card divide-y divide-line overflow-hidden mt-5">
+          {chats.map((c) => (
+            <li>
+              <a href={`/admin/support/${c.id}`} class="flex items-start gap-3 p-4 no-underline text-ink hover:bg-fill">
+                <span class:list={['size-2.5 rounded-full mt-2 shrink-0', c.status === 'open' && c.waiting_staff ? 'bg-brand' : 'bg-transparent']} aria-hidden="true"></span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-bold">{c.customer_name || c.customer_email}</span>
+                    <span class="badge h-6 text-xs bg-fill text-ink-soft">{c.topic ?? 'Help'}</span>
+                    {c.order_code && <span class="text-[0.8125rem] text-muted tabular">{c.order_code}</span>}
+                  </div>
+                  <p class:list={['text-sm truncate mt-0.5', c.waiting_staff ? 'text-ink font-semibold' : 'text-muted']}>{c.last_body}</p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="text-[0.8125rem] text-muted">{dateTime(c.last_at)}</p>
+                  <p class:list={['text-[0.75rem] font-bold mt-0.5', c.status === 'closed' ? 'text-muted' : c.waiting_staff ? 'text-brand' : 'text-success']}>
+                    {c.status === 'closed' ? 'Closed' : c.waiting_staff ? 'Needs reply' : 'Replied'}
+                  </p>
+                </div>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+</PanelLayout>

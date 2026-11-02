@@ -1,0 +1,37 @@
+---
+// A dish on the home page rows: photo, name, restaurant and price.
+// Tapping it (or +) opens the dish on the restaurant's page.
+import Icon from './Icon.astro';
+import FoodImage from './FoodImage.astro';
+import type { HomeDish } from '../data/store';
+import { money } from '../lib/format';
+
+interface Props {
+  dish: HomeDish;
+  index?: number;
+  class?: string;
+}
+const { dish: d, index, class: className } = Astro.props;
+const href = `/vendors/${d.vendor_slug}#item-${d.id}`;
+const order = index === undefined ? undefined : `--i:${Math.min(index, 8)}`;
+---
+
+<div class:list={['food-card', index === undefined ? 'reveal' : 'food-in', className]} style={order}>
+  <a href={href} class="group flex flex-col h-full no-underline text-ink">
+    <div class="img-zoom relative aspect-[4/3] overflow-hidden">
+      <FoodImage src={d.image_url} alt={d.name} class:list={['size-full', !d.vendor_open && 'grayscale-[0.5] opacity-80']} />
+      {!d.vendor_open && <span class="food-card-badge text-ink-soft">Restaurant closed</span>}
+    </div>
+    <div class="flex flex-col flex-1 px-3.5 pt-3 pb-3.5 min-w-0">
+      <h3 class="text-base font-bold leading-snug truncate">{d.name}</h3>
+      <p class="text-sm text-muted truncate">{d.vendor_name}</p>
+      <p class="mt-auto pt-3 text-[1.0625rem] font-extrabold text-brand tabular">{money(d.price)}</p>
+    </div>
+  </a>
+  <button type="button" class="fav-btn food-card-save !right-[3.375rem]" data-fav="item" data-fav-id={d.id} data-fav-name={d.name} aria-pressed="false" aria-label={`Save ${d.name} to favourites`}>
+    <Icon name="bookmark" size={19} />
+  </button>
+  <a href={href} class="dish-add" aria-label={`Add ${d.name}`}>
+    <Icon name="plus" size={22} strokeWidth={2.4} />
+  </a>
+</div>

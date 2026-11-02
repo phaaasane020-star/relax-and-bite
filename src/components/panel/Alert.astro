@@ -1,0 +1,27 @@
+---
+// Success or error message after a panel action.
+import Icon from '../Icon.astro';
+
+interface Props {
+  error?: string;
+  success?: string;
+}
+const { error, success } = Astro.props;
+---
+
+{
+  error && (
+    <div role="alert" data-form-error class="notice flex gap-3 items-start p-4 rounded-xl bg-danger-soft text-danger mb-5">
+      <Icon name="alert" size={20} class="shrink-0 mt-0.5" />
+      <p class="text-sm font-semibold">{error}</p>
+    </div>
+  )
+}
+{
+  !error && success && (
+    <div role="status" class="notice flex gap-3 items-start p-4 rounded-xl bg-success-soft text-success mb-5">
+      <Icon name="check" size={20} strokeWidth={2.6} class="shrink-0 mt-0.5" />
+      <p class="text-sm font-semibold">{success}</p>
+    </div>
+  )
+}

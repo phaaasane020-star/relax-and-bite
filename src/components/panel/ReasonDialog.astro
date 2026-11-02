@@ -1,0 +1,46 @@
+---
+// Popup asking for a reason before a harmful action (suspend, decline...).
+// Open it with a button: <button data-reason-open="suspend-dialog" data-id="..." data-name="...">
+interface Props {
+  id: string;
+  action: string;
+  title: string;
+  confirmLabel: string;
+  hint?: string;
+  placeholder?: string;
+}
+const { id, action, title, confirmLabel, hint, placeholder } = Astro.props;
+---
+
+<dialog id={id} class="sheet" aria-labelledby={`${id}-title`} data-reason-dialog data-title={title}>
+  <form method="post" class="p-6 flex flex-col gap-4">
+    <input type="hidden" name="action" value={action} />
+    <input type="hidden" name="id" />
+    <input type="hidden" name="name" />
+    <h2 id={`${id}-title`} class="text-lg font-extrabold">{title}</h2>
+    <div>
+      <label class="field-label" for={`${id}-reason`}>Reason</label>
+      <textarea id={`${id}-reason`} name="reason" rows="3" class="field-input" placeholder={placeholder} required></textarea>
+      {hint && <p class="field-hint">{hint}</p>}
+    </div>
+    <div class="flex gap-3">
+      <button type="button" data-close class="btn btn-secondary flex-1">Back</button>
+      <button type="submit" class="btn btn-danger flex-1">{confirmLabel}</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-reason-open]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const dialog = document.getElementById(btn.dataset.reasonOpen!) as HTMLDialogElement | null;
+      if (!dialog) return;
+      const form = dialog.querySelector('form')!;
+      form.reset();
+      (form.elements.namedItem('id') as HTMLInputElement).value = btn.dataset.id ?? '';
+      (form.elements.namedItem('name') as HTMLInputElement).value = btn.dataset.name ?? '';
+      dialog.querySelector('h2')!.textContent = `${dialog.dataset.title}: ${btn.dataset.name ?? ''}`;
+      dialog.showModal();
+    });
+  });
+</script>

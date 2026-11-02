@@ -1,0 +1,243 @@
+---
+// Promo codes for the people promoting Relax&Bite. Each promoter gets their
+// own code; a customer who uses it gets money off their first order. The
+// counts show how many new customers each promoter brought in.
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Alert from '../../components/panel/Alert.astro';
+import Icon from '../../components/Icon.astro';
+import { audit, createPromo, listPromos, setPromoActive } from '../../data/store';
+import { field, flash, takeFlash } from '../../lib/actions';
+import { clientInfo } from '../../lib/client-info';
+import { dateTime, money, prettyPhone } from '../../lib/format';
+import { SITE } from '../../data/site';
+import type { PromoCode } from '../../data/types';
+
+const me = Astro.locals.partner!;
+const who = `${me.full_name} (admin)`;
+let error = '';
+let created: PromoCode | null = null;
+let v = { promoter_name: '', promoter_phone: '', code: '', discount: String(SITE.promoDiscount) };
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = field(form, 'action');
+  try {
+    if (action === 'add') {
+      v = {
+        promoter_name: field(form, 'promoter_name', 80),
+        promoter_phone: field(form, 'promoter_phone', 20),
+        code: field(form, 'code', 24),
+        discount: field(form, 'discount', 10),
+      };
+      created = await createPromo({ promoterName: v.promoter_name, promoterPhone: v.promoter_phone, code: v.code, discount: Number(v.discount), by: me.full_name });
+      await audit(who, `Made the promo code ${created.code} for ${created.promoter_name} (${money(created.discount)} off a first order)`, { kind: 'admin', ...clientInfo(Astro) });
+    } else if (action === 'off' || action === 'on') {
+      const code = await setPromoActive(Number(field(form, 'id')), action === 'on');
+      await audit(who, `${action === 'on' ? 'Switched on' : 'Switched off'} the promo code ${code}`, { kind: 'admin', ...clientInfo(Astro) });
+      flash(Astro.cookies, action === 'on' ? `${code} works again.` : `${code} is switched off. Customers can no longer use it.`);
+      return Astro.redirect('/admin/promos', 303);
+    }
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const promos = await listPromos();
+const success = takeFlash(Astro.cookies);
+const showAdd = !created && (Astro.url.searchParams.get('add') === '1' || (Astro.request.method === 'POST' && !!error && v.promoter_name !== ''));
+
+const origin = Astro.url.origin;
+const linkFor = (code: string) => `${origin}/?promo=${code}`;
+// What the promoter forwards to people
+const customerMessage = (p: PromoCode) =>
+  `Get ${money(p.discount)} off your first food order on ${SITE.name} with my code ${p.code}. Order here: ${linkFor(p.code)}`;
+// What we send the promoter
+const promoterMessage = (p: PromoCode) =>
+  `Hello ${p.promoter_name.split(' ')[0]}, your ${SITE.name} promo code is ${p.code}.\n\nAnyone who uses it gets ${money(p.discount)} off their first order. Share this with people:\n\n${customerMessage(p)}`;
+const whatsappTo = (p: PromoCode) =>
+  p.promoter_phone ? `https://wa.me/233${p.promoter_phone.slice(1)}?text=${encodeURIComponent(promoterMessage(p))}` : `https://wa.me/?text=${encodeURIComponent(promoterMessage(p))}`;
+
+const active = promos.filter((p) => p.is_active).length;
+const firstOrders = promos.reduce((s, p) => s + Number(p.delivered), 0);
+const given = promos.reduce((s, p) => s + Number(p.given), 0);
+---
+
+<PanelLayout title="Promo codes">
+  <Alert error={error} success={success} />
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Promo codes</h1>
+    {!showAdd && (
+      <a href="/admin/promos?add=1" class="btn btn-primary min-h-11">
+        <Icon name="plus" size={18} strokeWidth={2.4} /> New code
+      </a>
+    )}
+  </div>
+  <p class="text-sm text-muted mt-2 max-w-2xl">
+    Give each promoter their own code. A customer who uses it gets money off their first order. Relax&amp;Bite pays the discount: the restaurant is still paid for the full food total.
+  </p>
+
+  {
+    created && (
+      <section class="card p-5 md:p-6 mt-6 max-w-xl flex flex-col gap-5 settle-slow" aria-labelledby="made-h">
+        <div class="flex items-center gap-3">
+          <span class="size-11 rounded-full bg-success-soft text-success flex items-center justify-center shrink-0">
+            <Icon name="check" size={22} strokeWidth={2.6} />
+          </span>
+          <div>
+            <h2 id="made-h" class="text-xl font-extrabold">Code ready for {created.promoter_name}</h2>
+            <p class="text-sm text-muted">{money(created.discount)} off a customer's first order.</p>
+          </div>
+        </div>
+        <dl class="rounded-xl bg-fill p-4 grid gap-3">
+          <div>
+            <dt class="text-xs font-semibold text-muted">Promo code</dt>
+            <dd class="flex items-center gap-2 flex-wrap">
+              <code class="font-extrabold text-2xl tracking-wide">{created.code}</code>
+              <button type="button" class="btn btn-ghost min-h-9 text-sm" data-copy={created.code}>Copy</button>
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold text-muted">Link (the code fills in by itself)</dt>
+            <dd class="flex items-center gap-2 flex-wrap min-w-0">
+              <span class="text-sm font-semibold break-all">{linkFor(created.code)}</span>
+              <button type="button" class="btn btn-ghost min-h-9 text-sm" data-copy={linkFor(created.code)}>Copy</button>
+            </dd>
+          </div>
+        </dl>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <a href={whatsappTo(created)} target="_blank" rel="noopener" class="btn btn-primary flex-1">
+            <Icon name="chat" size={18} /> Send to {created.promoter_name.split(' ')[0]} on WhatsApp
+          </a>
+          <button type="button" class="btn btn-secondary flex-1" data-copy={customerMessage(created)}>Copy message for customers</button>
+        </div>
+        <div class="flex gap-3 border-t border-line pt-4">
+          <a href="/admin/promos?add=1" class="btn btn-ghost flex-1">Make another</a>
+          <a href="/admin/promos" class="btn btn-ghost flex-1">Done</a>
+        </div>
+      </section>
+    )
+  }
+
+  {
+    showAdd && (
+      <form method="post" class="card p-5 md:p-6 mt-6 max-w-xl flex flex-col gap-4 settle-slow" aria-labelledby="add-h">
+        <input type="hidden" name="action" value="add" />
+        <h2 id="add-h" class="text-lg font-extrabold">New promo code</h2>
+        <div>
+          <label for="p-name" class="field-label">Promoter's name</label>
+          <input id="p-name" name="promoter_name" class="field-input" value={v.promoter_name} minlength="2" maxlength="60" autocomplete="off" required />
+        </div>
+        <div>
+          <label for="p-phone" class="field-label">Promoter's phone <span class="text-muted font-medium">(optional)</span></label>
+          <input id="p-phone" name="promoter_phone" type="tel" inputmode="tel" class="field-input" value={v.promoter_phone} placeholder="024 123 4567" autocomplete="off" />
+          <p class="field-hint">To send them their code on WhatsApp.</p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="p-code" class="field-label">Code <span class="text-muted font-medium">(optional)</span></label>
+            <input id="p-code" name="code" class="field-input uppercase placeholder:normal-case" value={v.code} maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Made from their name" />
+            <p class="field-hint">Letters and numbers, like KOFI10.</p>
+          </div>
+          <div>
+            <label for="p-discount" class="field-label">Discount (GH₵)</label>
+            <input id="p-discount" name="discount" type="number" inputmode="decimal" min="1" max="200" step="0.5" class="field-input tabular" value={v.discount} required />
+            <p class="field-hint">Off the customer's first order.</p>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <button type="submit" class="btn btn-primary">Make code</button>
+          <a href="/admin/promos" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+    )
+  }
+
+  <dl class="mt-6 grid gap-3 grid-cols-3 max-w-2xl">
+    <div class="card p-4 min-w-0">
+      <dt class="text-sm font-semibold text-muted">Active codes</dt>
+      <dd class="text-xl sm:text-2xl font-extrabold tabular mt-1">{active}</dd>
+    </div>
+    <div class="card p-4 min-w-0">
+      <dt class="text-sm font-semibold text-muted">New customers</dt>
+      <dd class="text-xl sm:text-2xl font-extrabold tabular mt-1">{firstOrders}</dd>
+    </div>
+    <div class="card p-4 min-w-0">
+      <dt class="text-sm font-semibold text-muted">Discounts given</dt>
+      <dd class="text-xl sm:text-2xl font-extrabold tabular mt-1 break-words">{money(given)}</dd>
+    </div>
+  </dl>
+
+  <section class="card mt-6 overflow-hidden" aria-label="Promo codes">
+    {
+      promos.length === 0 ? (
+        <p class="p-6 text-sm text-muted">No promo codes yet. Make one for each person promoting the app.</p>
+      ) : (
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm rtable">
+            <thead class="bg-paper text-left text-muted">
+              <tr>
+                <th class="px-5 py-3 font-semibold">Code</th>
+                <th class="px-5 py-3 font-semibold">Promoter</th>
+                <th class="px-5 py-3 font-semibold">Discount</th>
+                <th class="px-5 py-3 font-semibold">Orders</th>
+                <th class="px-5 py-3 font-semibold">Delivered</th>
+                <th class="px-5 py-3 font-semibold">Last used</th>
+                <th class="px-5 py-3 font-semibold">Status</th>
+                <th class="px-5 py-3 font-semibold"><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-line">
+              {promos.map((p) => (
+                <tr class:list={[!p.is_active && 'text-muted']}>
+                  <td class="px-5 py-3 font-extrabold tracking-wide whitespace-nowrap">{p.code}</td>
+                  <td class="px-5 py-3 whitespace-nowrap">
+                    <span class="block font-semibold">{p.promoter_name}</span>
+                    {p.promoter_phone && <a href={`tel:${p.promoter_phone}`} class="block text-xs text-muted tabular no-underline">{prettyPhone(p.promoter_phone)}</a>}
+                  </td>
+                  <td class="px-5 py-3 tabular whitespace-nowrap">{money(p.discount)}</td>
+                  <td class="px-5 py-3 tabular">{p.uses}</td>
+                  <td class="px-5 py-3 tabular">{p.delivered}</td>
+                  <td class="px-5 py-3 whitespace-nowrap">{p.last_used ? dateTime(p.last_used) : <span class="text-muted">Not yet</span>}</td>
+                  <td class="px-5 py-3">
+                    <span class:list={['badge h-6 text-xs', p.is_active ? 'bg-success-soft text-success' : 'bg-fill text-ink-soft']}>{p.is_active ? 'Active' : 'Off'}</span>
+                  </td>
+                  <td class="px-5 py-3 text-right whitespace-nowrap">
+                    {p.is_active && (
+                      <>
+                        <a href={whatsappTo(p)} target="_blank" rel="noopener" class="btn btn-ghost min-h-9 text-sm text-ink">Share</a>
+                        <button type="button" class="btn btn-ghost min-h-9 text-sm text-ink" data-copy={linkFor(p.code)}>Copy link</button>
+                      </>
+                    )}
+                    <form method="post" class="inline" data-confirm={p.is_active ? `Switch off ${p.code}?` : `Switch ${p.code} back on?`} data-confirm-message={p.is_active ? 'Customers will no longer be able to use it. Orders already placed keep their discount.' : undefined} data-confirm-label={p.is_active ? 'Switch off' : 'Switch on'}>
+                      <input type="hidden" name="action" value={p.is_active ? 'off' : 'on'} />
+                      <input type="hidden" name="id" value={p.id} />
+                      <button type="submit" class:list={['btn min-h-9 text-sm', p.is_active ? 'btn-ghost text-danger' : 'btn-secondary']}>{p.is_active ? 'Switch off' : 'Switch on'}</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    }
+  </section>
+  <p class="text-sm text-muted mt-3 max-w-2xl">
+    Each phone number gets one promo discount, on its first order. "Delivered" is the number of new customers whose first order arrived, which is the count to pay promoters on.
+  </p>
+</PanelLayout>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const label = btn.textContent;
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy || '');
+        btn.textContent = 'Copied';
+      } catch {
+        btn.textContent = 'Copy failed';
+      }
+      window.setTimeout(() => (btn.textContent = label), 1600);
+    });
+  });
+</script>

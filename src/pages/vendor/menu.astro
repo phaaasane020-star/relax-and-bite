@@ -1,0 +1,579 @@
+---
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Alert from '../../components/panel/Alert.astro';
+import Icon from '../../components/Icon.astro';
+import FoodImage from '../../components/FoodImage.astro';
+import { addCategory, audit, deleteMenuItem, getMenu, saveMenuItem, setItemAvailable } from '../../data/store';
+import { clientInfo } from '../../lib/client-info';
+import { field, flash, num, takeFlash } from '../../lib/actions';
+import { money } from '../../lib/format';
+
+const account = Astro.locals.partner!;
+const vendorId = account.vendor_id!;
+let error = '';
+const log = (action: string) => audit(`${account.full_name} (vendor)`, action, { kind: 'store', ...clientInfo(Astro) });
+const dishName = async (id: string) => (await getMenu(vendorId)).items.find((i) => i.id === id)?.name ?? 'a dish';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = field(form, 'action');
+  try {
+    if (action === 'add_category') {
+      const cat = await addCategory(vendorId, field(form, 'name', 60));
+      flash(Astro.cookies, `Section "${cat.name}" added.`);
+      await log(`Added menu section "${cat.name}"`);
+    } else if (action === 'save_item') {
+      const image = String(form.get('image_data') ?? '');
+      const remove = form.get('remove_image') === 'yes';
+      if (image && (!image.startsWith('data:image/') || image.length > 1_500_000)) throw new Error('Use a JPG or PNG photo under 1 MB.');
+      const categoryRaw = field(form, 'category_id');
+      const id = field(form, 'id');
+      let options: unknown;
+      try {
+        options = JSON.parse(String(form.get('options_json') ?? '[]'));
+      } catch {
+        throw new Error('The dish choices could not be read. Try again.');
+      }
+      await saveMenuItem(vendorId, {
+        id: id || undefined,
+        name: field(form, 'name', 80),
+        description: field(form, 'description', 200),
+        price: num(form, 'price'),
+        category_id: categoryRaw ? Number(categoryRaw) : null,
+        image_url: image ? image : remove ? null : undefined,
+        is_available: form.get('is_available') === 'yes',
+        is_popular: form.get('is_popular') === 'yes',
+        options,
+      });
+      flash(Astro.cookies, id ? 'Dish updated.' : 'Dish added to your menu.');
+      await log(`${id ? 'Updated' : 'Added'} dish "${field(form, 'name', 80)}" at GH₵ ${num(form, 'price').toFixed(2)}`);
+    } else if (action === 'toggle') {
+      const available = field(form, 'available') === 'yes';
+      const dish = await dishName(field(form, 'id'));
+      await setItemAvailable(vendorId, field(form, 'id'), available);
+      flash(Astro.cookies, available ? 'Marked as available.' : 'Marked as sold out for today.');
+      await log(`Marked "${dish}" as ${available ? 'available' : 'sold out'}`);
+    } else if (action === 'delete') {
+      const dish = await dishName(field(form, 'id'));
+      await deleteMenuItem(vendorId, field(form, 'id'));
+      flash(Astro.cookies, 'Dish removed from your menu.');
+      await log(`Removed "${dish}" from the menu`);
+    }
+    return Astro.redirect('/vendor/menu', 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const { categories, items } = await getMenu(vendorId);
+const sections = [
+  ...categories.map((c) => ({ id: c.id as number | null, name: c.name, items: items.filter((i) => i.category_id === c.id) })),
+  ...(items.some((i) => i.category_id === null) ? [{ id: null, name: 'No section', items: items.filter((i) => i.category_id === null) }] : []),
+];
+const success = takeFlash(Astro.cookies);
+const itemData = JSON.stringify(
+  items.map((i) => ({
+    id: i.id,
+    name: i.name,
+    description: i.description,
+    price: i.price,
+    category_id: i.category_id,
+    image_url: i.image_url,
+    is_available: i.is_available,
+    is_popular: i.is_popular,
+    options: i.options,
+  })),
+).replace(/</g, '\\u003c');
+---
+
+<PanelLayout title="Menu">
+  <Alert error={error} success={success} />
+
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Menu</h1>
+      <p class="text-sm text-muted mt-1">{items.length} dishes in {categories.length} sections</p>
+    </div>
+    <button type="button" data-new-item class="btn btn-primary w-full sm:w-auto"><Icon name="plus" size={18} /> Add dish</button>
+  </div>
+
+  <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px] items-start">
+    <div class="flex flex-col gap-6">
+      {
+        sections.length === 0 && (
+          <div class="card p-8">
+            <p class="font-bold">Your menu is empty</p>
+            <p class="text-sm text-muted mt-1">Add a section like "Rice dishes", then add your first dish.</p>
+          </div>
+        )
+      }
+      {
+        sections.map((s) => (
+          <section class="card" aria-label={s.name}>
+            <h2 class="px-5 py-4 border-b border-line font-extrabold">
+              {s.name} <span class="text-muted font-semibold text-sm">({s.items.length})</span>
+            </h2>
+            {s.items.length === 0 && <p class="px-5 py-4 text-sm text-muted">No dishes in this section yet.</p>}
+            <ul class="divide-y divide-line">
+              {s.items.map((i) => (
+                <li class="px-4 sm:px-5 py-3.5 flex flex-wrap sm:flex-nowrap items-center gap-x-3 sm:gap-x-4 gap-y-1">
+                  <FoodImage src={i.image_url} alt="" class:list={['size-14 rounded-lg shrink-0', !i.is_available && 'opacity-50']} />
+                  <div class="flex-1 min-w-0">
+                    <p class:list={['font-bold flex items-center gap-1.5 min-w-0', !i.is_available && 'text-faint']}>
+                      <span class="truncate">{i.name}</span>
+                      {i.is_popular && <span class="badge h-5 text-[0.6875rem] bg-brand-soft text-brand-ink shrink-0">Popular</span>}
+                    </p>
+                    <p class="text-sm text-muted tabular">
+                      {money(i.price)}
+                      {i.options.length > 0 && <span class="ml-2 text-xs font-semibold">{i.options.length} {i.options.length === 1 ? "choice" : "choices"}</span>}
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0 max-sm:basis-full max-sm:justify-end">
+                  <form method="post" class="shrink-0 flex items-center gap-2 mr-auto">
+                    <input type="hidden" name="action" value="toggle" />
+                    <input type="hidden" name="id" value={i.id} />
+                    <input type="hidden" name="available" value={i.is_available ? 'no' : 'yes'} />
+                    <button
+                      type="submit"
+                      role="switch"
+                      aria-checked={i.is_available ? 'true' : 'false'}
+                      class="switch"
+                      aria-label={i.is_available ? `${i.name} is in stock. Tap to mark it sold out` : `${i.name} is sold out. Tap to mark it in stock`}
+                    ></button>
+                    <span class:list={['text-sm font-bold', i.is_available ? 'text-success' : 'text-muted']}>{i.is_available ? 'In stock' : 'Sold out'}</span>
+                  </form>
+                  <button type="button" data-edit-item={i.id} class="icon-btn border-0 shrink-0" aria-label={`Edit ${i.name}`}>
+                    <Icon name="edit" size={18} />
+                  </button>
+                  <form
+                    method="post"
+                    class="shrink-0"
+                    data-confirm={`Remove ${i.name}?`}
+                    data-confirm-message="It will disappear from your menu. Past orders are not affected."
+                    data-confirm-label="Remove dish"
+                    data-confirm-danger="true"
+                  >
+                    <input type="hidden" name="action" value="delete" />
+                    <input type="hidden" name="id" value={i.id} />
+                    <button type="submit" class="icon-btn border-0 text-danger" aria-label={`Remove ${i.name}`}>
+                      <Icon name="trash" size={18} />
+                    </button>
+                  </form>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
+      }
+    </div>
+
+    <aside class="card p-5 flex flex-col gap-3 xl:sticky xl:top-8">
+      <h2 class="font-extrabold">Add a section</h2>
+      <p class="text-sm text-muted">Sections group your menu, for example Rice dishes, Soups or Drinks.</p>
+      <form method="post" class="flex gap-2">
+        <input type="hidden" name="action" value="add_category" />
+        <label for="cat-name" class="sr-only">Section name</label>
+        <input id="cat-name" name="name" class="field-input" placeholder="Section name" required maxlength="60" />
+        <button type="submit" class="btn btn-secondary">Add</button>
+      </form>
+    </aside>
+  </div>
+
+  <!-- Add / edit dish -->
+  <dialog id="item-dialog" class="sheet sheet-wide" aria-labelledby="item-dialog-title">
+    <form method="post" class="flex flex-col max-h-[calc(100dvh-2rem)]" novalidate>
+      <input type="hidden" name="action" value="save_item" />
+      <input type="hidden" name="id" />
+      <input type="hidden" name="image_data" />
+      <input type="hidden" name="options_json" value="[]" />
+      <header class="flex items-center justify-between px-6 h-16 border-b border-line shrink-0">
+        <h2 id="item-dialog-title" class="text-lg font-extrabold">Add dish</h2>
+        <button type="button" data-close class="icon-btn icon-btn-round border-0 -mr-2" aria-label="Close"><Icon name="x" size={22} /></button>
+      </header>
+      <div class="overflow-y-auto px-6 py-5 flex flex-col gap-4">
+        <div class="flex items-center gap-4">
+          <div class="size-24 rounded-xl overflow-hidden bg-fill flex items-center justify-center text-faint shrink-0">
+            <img data-preview alt="" class="size-full object-cover" hidden />
+            <span data-preview-empty><Icon name="dish" size={32} strokeWidth={1.6} /></span>
+          </div>
+          <div class="flex flex-col gap-2">
+            <label class="btn btn-secondary cursor-pointer">
+              <input type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" data-photo />
+              Choose photo
+            </label>
+            <label class="flex items-center gap-2 text-sm" data-remove-wrap hidden>
+              <input type="checkbox" name="remove_image" value="yes" class="rounded text-brand border-line-strong focus:ring-brand" /> Remove photo
+            </label>
+            <p class="text-xs text-muted">A clear photo of the real dish sells best.</p>
+          </div>
+        </div>
+        <div>
+          <label for="item-name" class="field-label">Dish name</label>
+          <input id="item-name" name="name" class="field-input" required maxlength="80" placeholder="For example, Jollof rice with chicken" />
+        </div>
+        <div>
+          <label for="item-desc" class="field-label">Description <span class="text-muted font-medium">(optional)</span></label>
+          <textarea id="item-desc" name="description" rows="2" class="field-input" maxlength="200" placeholder="What comes with it"></textarea>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="item-price" class="field-label">Price (GH₵)</label>
+            <input id="item-price" name="price" type="number" min="0.5" step="0.5" inputmode="decimal" class="field-input tabular" required />
+          </div>
+          <div>
+            <label for="item-cat" class="field-label">Section</label>
+            <select id="item-cat" name="category_id" class="field-input">
+              {categories.map((c) => <option value={c.id}>{c.name}</option>)}
+              <option value="">No section</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-x-6 gap-y-3">
+          <label class="flex items-center gap-2 text-sm font-semibold">
+            <input type="checkbox" name="is_available" value="yes" class="size-5 rounded text-brand border-line-strong focus:ring-brand" /> Available to order
+          </label>
+          <label class="flex items-center gap-2 text-sm font-semibold">
+            <input type="checkbox" name="is_popular" value="yes" class="size-5 rounded text-brand border-line-strong focus:ring-brand" /> Show in Popular
+          </label>
+        </div>
+        <!-- Choices -->
+        <section class="flex flex-col gap-3 pt-5 mt-1 border-t border-line" aria-labelledby="choices-h">
+          <div>
+            <h3 id="choices-h" class="font-extrabold">Choices <span class="text-muted font-medium text-sm">(optional)</span></h3>
+            <p class="text-sm text-muted mt-0.5">Let customers pick things like the protein, size or extras. Leave this empty if the dish has no choices.</p>
+          </div>
+          <div data-groups class="flex flex-col gap-3"></div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" data-add-group class="btn btn-secondary min-h-10 text-sm"><Icon name="plus" size={16} /> Add choices</button>
+            <span class="text-sm text-muted">or start from</span>
+            <button type="button" data-template="protein" class="chip h-9">Protein</button>
+            <button type="button" data-template="size" class="chip h-9">Size</button>
+            <button type="button" data-template="extras" class="chip h-9">Extras</button>
+            <button type="button" data-template="drink" class="chip h-9">Drink</button>
+          </div>
+          <div data-choice-preview-wrap hidden class="rounded-xl border border-dashed border-line-strong p-4">
+            <p class="text-xs font-bold uppercase tracking-wide text-muted">What customers see</p>
+            <div data-choice-preview class="mt-3 flex flex-col gap-4"></div>
+          </div>
+        </section>
+
+        <p data-photo-error role="alert" hidden class="text-sm font-semibold text-danger p-3 rounded-lg bg-danger-soft"></p>
+      </div>
+      <footer class="shrink-0 border-t border-line px-6 py-4 flex justify-end gap-3">
+        <button type="button" data-close class="btn btn-secondary">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save dish</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script type="application/json" id="menu-items" set:html={itemData}></script>
+</PanelLayout>
+
+<script>
+  import type { OptionGroup } from '../../data/types';
+  import { cleanOptions, optionRuleLabel, OPTION_LIMITS } from '../../lib/options';
+  import { money } from '../../lib/format';
+
+  type Item = {
+    id: string;
+    name: string;
+    description: string;
+    price: number;
+    category_id: number | null;
+    image_url: string | null;
+    is_available: boolean;
+    is_popular: boolean;
+    options: OptionGroup[];
+  };
+  const items = JSON.parse(document.getElementById('menu-items')!.textContent || '[]') as Item[];
+  const dialog = document.getElementById('item-dialog') as HTMLDialogElement;
+  const form = dialog.querySelector('form')!;
+  const title = dialog.querySelector<HTMLElement>('#item-dialog-title')!;
+  const preview = dialog.querySelector<HTMLImageElement>('[data-preview]')!;
+  const previewEmpty = dialog.querySelector<HTMLElement>('[data-preview-empty]')!;
+  const removeWrap = dialog.querySelector<HTMLElement>('[data-remove-wrap]')!;
+  const photoError = dialog.querySelector<HTMLElement>('[data-photo-error]')!;
+  const input = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
+
+  function showPreview(src: string | null) {
+    preview.hidden = !src;
+    previewEmpty.hidden = !!src;
+    if (src) preview.src = src;
+  }
+
+  function open(item?: Item) {
+    form.reset();
+    input('image_data').value = '';
+    photoError.hidden = true;
+    title.textContent = item ? 'Edit dish' : 'Add dish';
+    input('id').value = item?.id ?? '';
+    input('name').value = item?.name ?? '';
+    (form.elements.namedItem('description') as HTMLTextAreaElement).value = item?.description ?? '';
+    input('price').value = item ? String(item.price) : '';
+    const cat = form.elements.namedItem('category_id') as HTMLSelectElement;
+    if (item) cat.value = item.category_id === null ? '' : String(item.category_id);
+    input('is_available').checked = item ? item.is_available : true;
+    input('is_popular').checked = item ? item.is_popular : false;
+    showPreview(item?.image_url ?? null);
+    removeWrap.hidden = !item?.image_url;
+    groups = structuredClone(item?.options ?? []);
+    renderGroups();
+    dialog.showModal();
+    input('name').focus();
+  }
+
+  document.querySelector('[data-new-item]')?.addEventListener('click', () => open());
+  document.querySelectorAll<HTMLButtonElement>('[data-edit-item]').forEach((btn) =>
+    btn.addEventListener('click', () => open(items.find((i) => i.id === btn.dataset.editItem))),
+  );
+
+  // Shrink photos in the browser before upload (max 800px wide)
+  dialog.querySelector<HTMLInputElement>('[data-photo]')!.addEventListener('change', async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    photoError.hidden = true;
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      photoError.textContent = 'Choose a photo (JPG or PNG).';
+      photoError.hidden = false;
+      return;
+    }
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 800 / bitmap.width);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const data = canvas.toDataURL('image/jpeg', 0.82);
+    input('image_data').value = data;
+    showPreview(data);
+  });
+
+  form.addEventListener('submit', (e) => {
+    const name = input('name');
+    const price = input('price');
+    const fail = (msg: string) => {
+      e.preventDefault();
+      photoError.textContent = msg;
+      photoError.hidden = false;
+      photoError.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
+    if (!name.value.trim()) return fail('Enter the dish name.');
+    if (!(Number(price.value) > 0)) return fail('Enter a price above GH₵ 0.');
+    try {
+      input('options_json').value = JSON.stringify(cleanOptions(groups));
+    } catch (err) {
+      fail((err as Error).message);
+    }
+  });
+
+  // ---------------- Choices editor ----------------
+  let groups: OptionGroup[] = [];
+  const groupsEl = dialog.querySelector<HTMLElement>('[data-groups]')!;
+  const previewWrap = dialog.querySelector<HTMLElement>('[data-choice-preview-wrap]')!;
+  const previewEl = dialog.querySelector<HTMLElement>('[data-choice-preview]')!;
+  const addGroupBtn = dialog.querySelector<HTMLButtonElement>('[data-add-group]')!;
+
+  const TEMPLATES: Record<string, OptionGroup> = {
+    protein: { name: 'Choose your protein', required: true, max: 1, choices: [{ name: 'Chicken', price: 0 }, { name: 'Fish', price: 5 }, { name: 'Beef', price: 5 }] },
+    size: { name: 'Size', required: true, max: 1, choices: [{ name: 'Regular', price: 0 }, { name: 'Large', price: 10 }] },
+    extras: { name: 'Extras', required: false, max: 3, choices: [{ name: 'Boiled egg', price: 3 }, { name: 'Extra shito', price: 2 }, { name: 'Fried plantain', price: 6 }] },
+    drink: { name: 'Add a drink', required: false, max: 1, choices: [{ name: 'Sobolo', price: 12 }, { name: 'Bottled water', price: 3 }] },
+  };
+
+  const ICON = {
+    up: '<path d="m6 15 6-6 6 6"/>',
+    down: '<path d="m6 9 6 6 6-6"/>',
+    trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+    x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+  };
+  const svg = (p: string, size = 18) =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+
+  function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', html = ''): HTMLElementTagNameMap[K] {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (html) node.innerHTML = html;
+    return node;
+  }
+  function iconButton(icon: string, label: string, onClick: () => void, extra = ''): HTMLButtonElement {
+    const b = el('button', `icon-btn border-0 size-9 ${extra}`, svg(icon));
+    b.type = 'button';
+    b.setAttribute('aria-label', label);
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function renderPreview() {
+    previewWrap.hidden = groups.length === 0;
+    previewEl.replaceChildren(
+      ...groups.map((g) => {
+        const box = el('div', 'flex flex-col gap-2');
+        const head = el('div', 'flex items-baseline justify-between gap-3');
+        const h = el('p', 'font-bold text-[0.9375rem]');
+        h.textContent = g.name || 'Untitled group';
+        const rule = el('span', `text-xs font-semibold ${g.required ? 'text-brand-ink' : 'text-muted'}`);
+        rule.textContent = optionRuleLabel({ required: g.required, max: Math.max(1, Math.min(g.max, g.choices.length || 1)) });
+        head.append(h, rule);
+        box.append(head);
+        g.choices.forEach((c) => {
+          const row = el('div', 'flex items-center gap-3 px-3 h-11 rounded-lg border border-line bg-surface text-sm');
+          row.append(el('span', `size-4 shrink-0 border-2 border-line-strong ${g.max > 1 ? 'rounded' : 'rounded-full'}`));
+          const n = el('span', 'flex-1 font-semibold truncate');
+          n.textContent = c.name || 'Untitled choice';
+          const p = el('span', 'text-muted tabular');
+          p.textContent = Number(c.price) > 0 ? `+ ${money(Number(c.price))}` : '';
+          row.append(n, p);
+          box.append(row);
+        });
+        return box;
+      }),
+    );
+  }
+
+  function renderGroups() {
+    addGroupBtn.disabled = groups.length >= OPTION_LIMITS.groups;
+    groupsEl.replaceChildren(
+      ...groups.map((g, gi) => {
+        const card = el('div', 'rounded-xl border border-line-strong bg-paper p-3 sm:p-4 flex flex-col gap-3');
+
+        // Name + move/remove
+        const top = el('div', 'flex items-end gap-1');
+        const nameWrap = el('div', 'flex-1 min-w-0');
+        const nameId = `grp-${gi}-name`;
+        const nameLabel = el('label', 'field-label');
+        nameLabel.htmlFor = nameId;
+        nameLabel.textContent = 'Group name';
+        const nameInput = el('input', 'field-input');
+        nameInput.id = nameId;
+        nameInput.maxLength = OPTION_LIMITS.name;
+        nameInput.placeholder = 'For example, Choose your protein';
+        nameInput.value = g.name;
+        nameInput.addEventListener('input', () => {
+          g.name = nameInput.value;
+          renderPreview();
+        });
+        nameWrap.append(nameLabel, nameInput);
+        const up = iconButton(ICON.up, `Move ${g.name || 'group'} up`, () => move(gi, -1));
+        up.disabled = gi === 0;
+        const down = iconButton(ICON.down, `Move ${g.name || 'group'} down`, () => move(gi, 1));
+        down.disabled = gi === groups.length - 1;
+        const remove = iconButton(ICON.trash, `Remove ${g.name || 'group'}`, () => {
+          groups.splice(gi, 1);
+          renderGroups();
+        }, 'text-danger');
+        top.append(nameWrap, up, down, remove);
+
+        // Rules
+        const rules = el('div', 'flex flex-wrap items-center gap-x-5 gap-y-2 text-sm');
+        const reqLabel = el('label', 'flex items-center gap-2 font-semibold');
+        const req = el('input', 'size-5 rounded text-brand border-line-strong focus:ring-brand');
+        req.type = 'checkbox';
+        req.checked = g.required;
+        req.addEventListener('change', () => {
+          g.required = req.checked;
+          renderPreview();
+        });
+        reqLabel.append(req, document.createTextNode('Customer must choose'));
+        const maxLabel = el('label', 'flex items-center gap-2');
+        maxLabel.append(document.createTextNode('They can pick up to'));
+        const max = el('input', 'field-input w-16 min-h-9 py-1 text-center tabular');
+        max.type = 'number';
+        max.min = '1';
+        max.max = String(Math.max(1, g.choices.length));
+        max.value = String(g.max);
+        max.addEventListener('input', () => {
+          g.max = Math.max(1, Math.round(Number(max.value) || 1));
+          renderPreview();
+        });
+        maxLabel.append(max);
+        rules.append(reqLabel, maxLabel);
+
+        // Choices
+        const list = el('ul', 'flex flex-col gap-2');
+        g.choices.forEach((c, ci) => {
+          const li = el('li', 'flex items-center gap-2');
+          const cname = el('input', 'field-input min-h-10 py-2 flex-1 min-w-0');
+          cname.maxLength = OPTION_LIMITS.name;
+          cname.placeholder = `Choice ${ci + 1}`;
+          cname.value = c.name;
+          cname.setAttribute('aria-label', `Choice ${ci + 1} name`);
+          cname.addEventListener('input', () => {
+            c.name = cname.value;
+            renderPreview();
+          });
+          const priceWrap = el('div', 'relative w-28 shrink-0');
+          const prefix = el('span', 'absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted pointer-events-none');
+          prefix.textContent = '+ GH₵';
+          const cprice = el('input', 'field-input min-h-10 py-2 pl-12 tabular');
+          cprice.type = 'number';
+          cprice.min = '0';
+          cprice.step = '0.5';
+          cprice.inputMode = 'decimal';
+          cprice.value = String(c.price ?? 0);
+          cprice.setAttribute('aria-label', `Extra price for choice ${ci + 1}`);
+          cprice.addEventListener('input', () => {
+            c.price = Number(cprice.value) || 0;
+            renderPreview();
+          });
+          priceWrap.append(prefix, cprice);
+          const del = iconButton(ICON.x, `Remove choice ${ci + 1}`, () => {
+            g.choices.splice(ci, 1);
+            g.max = Math.max(1, Math.min(g.max, g.choices.length));
+            renderGroups();
+          }, 'shrink-0 text-muted');
+          li.append(cname, priceWrap, del);
+          list.append(li);
+        });
+
+        const addChoice = el('button', 'btn btn-ghost min-h-9 text-sm self-start -ml-2', `${svg(ICON.plus, 16)} Add a choice`);
+        addChoice.type = 'button';
+        addChoice.disabled = g.choices.length >= OPTION_LIMITS.choices;
+        addChoice.addEventListener('click', () => {
+          g.choices.push({ name: '', price: 0 });
+          renderGroups();
+          const inputs = groupsEl.children[gi]?.querySelectorAll<HTMLInputElement>('ul input:not([type="number"])');
+          inputs?.[inputs.length - 1]?.focus();
+        });
+
+        const hint = el('p', 'text-xs text-muted -mt-1');
+        hint.textContent = 'Put 0 for choices that cost nothing extra.';
+
+        card.append(top, rules, list, hint, addChoice);
+        return card;
+      }),
+    );
+    renderPreview();
+  }
+
+  function move(index: number, by: number) {
+    const to = index + by;
+    if (to < 0 || to >= groups.length) return;
+    [groups[index], groups[to]] = [groups[to], groups[index]];
+    renderGroups();
+  }
+
+  function addGroup(group: OptionGroup) {
+    if (groups.length >= OPTION_LIMITS.groups) return;
+    groups.push(group);
+    renderGroups();
+    const last = groupsEl.lastElementChild;
+    last?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    last?.querySelector<HTMLInputElement>('input')?.focus();
+  }
+
+  addGroupBtn.addEventListener('click', () => addGroup({ name: '', required: false, max: 1, choices: [{ name: '', price: 0 }] }));
+  dialog.querySelectorAll<HTMLButtonElement>('[data-template]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const t = TEMPLATES[btn.dataset.template!];
+      if (groups.some((g) => g.name.trim().toLowerCase() === t.name.toLowerCase())) {
+        photoError.textContent = `This dish already has "${t.name}".`;
+        photoError.hidden = false;
+        return;
+      }
+      photoError.hidden = true;
+      addGroup(structuredClone(t));
+    }),
+  );
+</script>

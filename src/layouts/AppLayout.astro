@@ -1,0 +1,30 @@
+---
+// Standard page shell: header, content, footer (desktop) and bottom nav (phone).
+import BaseLayout from './BaseLayout.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import BottomNav from '../components/BottomNav.astro';
+import InstallPrompt from '../components/InstallPrompt.astro';
+
+interface Props {
+  title?: string;
+  description?: string;
+  /** "none" hides the big header on phones (page shows its own TopBar) */
+  mobileHeader?: 'full' | 'top' | 'none';
+  /** show the phone bottom navigation */
+  nav?: boolean;
+  query?: string;
+  onboardingGate?: boolean;
+}
+const { title, description, mobileHeader = 'top', nav = true, query, onboardingGate = false } = Astro.props;
+---
+
+<BaseLayout title={title} description={description} onboardingGate={onboardingGate}>
+  <SiteHeader mobile={mobileHeader} query={query} />
+  <main data-motion="page" class:list={[nav ? 'pb-4 md:pb-0' : 'pb-4']}>
+    <slot />
+  </main>
+  <SiteFooter nav={nav} />
+  {nav && <BottomNav />}
+  {nav && <InstallPrompt />}
+</BaseLayout>

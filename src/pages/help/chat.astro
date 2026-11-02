@@ -1,0 +1,188 @@
+---
+// Support chat: the assistant collects the details, then our team replies here.
+import AppLayout from '../../layouts/AppLayout.astro';
+import Icon from '../../components/Icon.astro';
+import { getUser } from '../../lib/session';
+import { getActiveChat, viewChat } from '../../data/support';
+import { SITE } from '../../data/site';
+import { prettyPhone } from '../../lib/format';
+
+const user = getUser(Astro.cookies);
+if (!user) return Astro.redirect('/login?next=/help/chat');
+const view = await viewChat(await getActiveChat(user.id));
+---
+
+<AppLayout title="Support chat" mobileHeader="none" nav={false}>
+  <div class="chat-shell" data-chat data-initial={JSON.stringify(view)}>
+    <header class="chat-top pt-[var(--sat)]">
+      <div class="container-app max-w-2xl h-[4.5rem] flex items-center gap-3">
+        <a href="/help" data-back class="back-link" aria-label="Back"><Icon name="chevron-left" size={22} strokeWidth={2.2} /></a>
+        <div class="min-w-0 flex-1">
+          <h1 class="text-xl font-extrabold tracking-tight leading-tight">Support chat</h1>
+          <p class="text-[0.8125rem] text-muted truncate" data-status>{view.status}</p>
+        </div>
+      </div>
+    </header>
+
+    <main class="container-app max-w-2xl flex-1 py-4 flex flex-col gap-3" data-thread aria-live="polite"></main>
+
+    <footer class="chat-bottom pb-[max(0.75rem,var(--sab))]">
+      <form class="container-app max-w-2xl pt-3 flex items-end gap-2" data-compose>
+        <textarea name="text" rows="1" maxlength="1000" class="field-input field-lg flex-1 min-w-0 resize-none !rounded-[1.25rem] max-h-36" placeholder="Choose an option above" disabled data-input aria-label="Message"></textarea>
+        <button type="submit" class="chat-send" aria-label="Send" disabled data-send><Icon name="send" size={20} /></button>
+      </form>
+      <p class="container-app max-w-2xl text-[0.75rem] text-muted mt-2 text-center">Something urgent? Call us on <a href={`tel:${SITE.supportPhone}`} class="font-bold text-brand">{prettyPhone(SITE.supportPhone)}</a>.</p>
+    </footer>
+  </div>
+</AppLayout>
+
+<script>
+  type Msg = { id: number; sender: 'customer' | 'staff' | 'bot'; author: string; body: string; created_at: string };
+  type Prompt =
+    | { kind: 'options'; step: 'topic' | 'order'; options: { value: string; label: string; detail?: string }[] }
+    | { kind: 'text'; placeholder: string }
+    | { kind: 'closed' };
+  type View = { chat: { status: string }; messages: Msg[]; prompt: Prompt; status: string; error?: string };
+
+  const root = document.querySelector<HTMLElement>('[data-chat]')!;
+  const thread = root.querySelector<HTMLElement>('[data-thread]')!;
+  const statusEl = root.querySelector<HTMLElement>('[data-status]')!;
+  const form = root.querySelector<HTMLFormElement>('[data-compose]')!;
+  const input = root.querySelector<HTMLTextAreaElement>('[data-input]')!;
+  const send = root.querySelector<HTMLButtonElement>('[data-send]')!;
+  let view = JSON.parse(root.dataset.initial!) as View;
+  let shown = 0;
+  let busy = false;
+
+  const time = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Accra' });
+
+  function bubble(m: Msg): HTMLElement {
+    const mine = m.sender === 'customer';
+    const wrap = document.createElement('div');
+    wrap.className = `chat-msg ${mine ? 'chat-msg-me' : m.sender === 'staff' ? 'chat-msg-staff' : 'chat-msg-bot'}`;
+    if (!mine) {
+      const who = document.createElement('p');
+      who.className = 'chat-who';
+      who.textContent = m.sender === 'staff' ? `${m.author || 'Support'} · Relax&Bite team` : m.author || 'Assistant';
+      wrap.append(who);
+    }
+    const body = document.createElement('p');
+    body.className = 'whitespace-pre-line';
+    body.textContent = m.body;
+    const at = document.createElement('p');
+    at.className = 'chat-time';
+    at.textContent = time(m.created_at);
+    wrap.append(body, at);
+    return wrap;
+  }
+
+  function render(next: View) {
+    view = next;
+    statusEl.textContent = next.status;
+    thread.querySelectorAll('[data-options], [data-closed], [data-error]').forEach((x) => x.remove());
+    for (const m of next.messages.slice(shown)) thread.append(bubble(m));
+    shown = next.messages.length;
+    const p = next.prompt;
+    if (p.kind === 'options') {
+      const box = document.createElement('div');
+      box.dataset.options = '';
+      box.className = 'flex flex-col items-start gap-2';
+      for (const o of p.options) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'chat-option';
+        const label = document.createElement('span');
+        label.className = 'block';
+        label.textContent = o.label;
+        b.append(label);
+        if (o.detail) {
+          const d = document.createElement('span');
+          d.className = 'block text-[0.75rem] font-medium text-muted';
+          d.textContent = o.detail;
+          b.append(d);
+        }
+        b.addEventListener('click', () => act({ step: p.step, value: o.value }));
+        box.append(b);
+      }
+      thread.append(box);
+    } else if (p.kind === 'closed') {
+      const box = document.createElement('div');
+      box.dataset.closed = '';
+      box.className = 'flex justify-center pt-2';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-primary rounded-2xl';
+      b.textContent = 'Start a new chat';
+      b.addEventListener('click', () => {
+        thread.replaceChildren();
+        shown = 0;
+        act({ step: 'new' });
+      });
+      box.append(b);
+      thread.append(box);
+    }
+    const typing = p.kind === 'text';
+    input.disabled = !typing;
+    send.disabled = !typing;
+    input.placeholder = typing ? p.placeholder : p.kind === 'closed' ? 'This chat is closed' : 'Choose an option above';
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  }
+
+  function showError(message: string) {
+    const e = document.createElement('p');
+    e.dataset.error = '';
+    e.className = 'text-sm font-semibold text-danger text-center';
+    e.textContent = message;
+    thread.append(e);
+  }
+
+  async function act(body: object) {
+    if (busy) return;
+    busy = true;
+    try {
+      const res = await fetch('/api/support', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const next = (await res.json().catch(() => ({}))) as View;
+      if (!res.ok || next.error) showError(next.error || "Couldn't send. Try again.");
+      else render(next);
+    } catch {
+      showError('No connection. Check your internet and try again.');
+    }
+    busy = false;
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    input.style.height = '';
+    await act({ step: 'message', text });
+    input.focus();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer: coarse)').matches) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 144)}px`;
+  });
+
+  render(view);
+
+  // New replies from the team, while the chat is open
+  window.setInterval(async () => {
+    if (document.visibilityState !== 'visible' || busy || view.chat.status !== 'open') return;
+    try {
+      const res = await fetch('/api/support');
+      if (res.ok) {
+        const next = (await res.json()) as View;
+        if (next.messages.length !== shown || next.status !== view.status) render(next);
+      }
+    } catch {
+      /* try again next time */
+    }
+  }, 6000);
+</script>

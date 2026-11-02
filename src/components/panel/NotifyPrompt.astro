@@ -1,0 +1,126 @@
+---
+// Top of the vendor, rider and admin panels: asks them to allow notifications
+// (once tapped, the phone or browser asks its own question). Hidden once
+// they're on, and for three days after "Not now".
+import Icon from '../Icon.astro';
+import { pushReady } from '../../data/push';
+import { vapidPublicKey } from '../../lib/webpush';
+
+const ready = pushReady();
+const role = Astro.locals.partner!.role;
+const why =
+  role === 'vendor'
+    ? "Get a notification the moment a new order comes in, even when this page isn't open."
+    : role === 'rider'
+      ? 'Get a notification when there is a delivery near you and when food is ready for pickup.'
+      : 'Get a notification for new orders and new restaurant or rider applications.';
+---
+
+{
+  (ready.web || ready.app) && (
+    <section
+      data-notify-prompt
+      data-no-stagger
+      data-web-key={ready.web ? vapidPublicKey() : ''}
+      data-app-ready={ready.app ? '1' : undefined}
+      hidden
+      class="mx-4 sm:mx-6 lg:mx-8 mt-4 lg:mt-6 p-4 rounded-2xl border border-line bg-surface flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4"
+      aria-live="polite"
+    >
+      <div class="flex-1 min-w-0 flex items-start gap-3">
+        <span class="size-10 rounded-full bg-brand-soft text-brand flex items-center justify-center shrink-0">
+          <Icon name="bell" size={20} />
+        </span>
+        <div class="min-w-0">
+          <p class="font-extrabold" data-np-title>Turn on notifications</p>
+          <p class="text-sm text-muted mt-0.5" data-np-text>{why}</p>
+        </div>
+      </div>
+      <div class="flex gap-2 shrink-0" data-np-actions>
+        <button type="button" data-np-later class="btn btn-secondary flex-1 sm:flex-none">Not now</button>
+        <button type="button" data-np-allow class="btn btn-primary flex-[2] sm:flex-none">Allow notifications</button>
+      </div>
+    </section>
+  )
+}
+
+<script>
+  import { pushState, turnOnPush } from '../../lib/push-client';
+
+  const box = document.querySelector<HTMLElement>('[data-notify-prompt]');
+  const LATER = 'rb_push_later';
+  if (box) {
+    const opts = { webKey: box.dataset.webKey ?? '', appReady: box.hasAttribute('data-app-ready') };
+    const title = box.querySelector<HTMLElement>('[data-np-title]')!;
+    const text = box.querySelector<HTMLElement>('[data-np-text]')!;
+    const allow = box.querySelector<HTMLButtonElement>('[data-np-allow]')!;
+    const later = box.querySelector<HTMLButtonElement>('[data-np-later]')!;
+    const snoozed = () => {
+      try {
+        return Number(localStorage.getItem(LATER) || 0) > Date.now();
+      } catch {
+        return false;
+      }
+    };
+    const blocked = () => {
+      title.textContent = 'Notifications are blocked';
+      text.textContent = document.documentElement.classList.contains('in-app')
+        ? 'Open your phone Settings > Apps > RelaxBite > Notifications, and turn them on.'
+        : "Tap the lock or settings icon next to the web address, choose Notifications, then Allow. Then refresh this page.";
+      allow.hidden = true;
+      later.textContent = 'OK';
+      box.hidden = false;
+    };
+
+    pushState(opts)
+      .then(async (state) => {
+        if (state === 'on') {
+          // Already allowed: make sure this device is saved for this account
+          await turnOnPush({ ...opts, ask: false }).catch(() => {});
+          return;
+        }
+        if (state === 'unsupported' || snoozed()) return;
+        if (state === 'old-app') {
+          title.textContent = 'Update the app for notifications';
+          text.textContent = 'This version of the app cannot show notifications. Get the latest RelaxBite app, or use the website in Chrome.';
+          allow.hidden = true;
+          later.textContent = 'OK';
+          box.hidden = false;
+          return;
+        }
+        if (state === 'blocked') return blocked();
+        box.hidden = false;
+      })
+      .catch(() => {});
+
+    allow.addEventListener('click', async () => {
+      allow.disabled = true;
+      allow.textContent = 'Waiting for your answer…';
+      try {
+        const state = await turnOnPush({ ...opts, ask: true });
+        if (state === 'on') {
+          title.textContent = 'Notifications are on';
+          text.textContent = "You'll get a notification for new orders on this device.";
+          box.querySelector('[data-np-actions]')!.remove();
+          window.setTimeout(() => (box.hidden = true), 4000);
+        } else if (state === 'blocked') blocked();
+        else {
+          allow.disabled = false;
+          allow.textContent = 'Allow notifications';
+        }
+      } catch {
+        text.textContent = "Couldn't turn notifications on. Check your connection and try again.";
+        allow.disabled = false;
+        allow.textContent = 'Try again';
+      }
+    });
+    later.addEventListener('click', () => {
+      try {
+        localStorage.setItem(LATER, String(Date.now() + 3 * 24 * 60 * 60 * 1000));
+      } catch {
+        /* private mode: just hide it for now */
+      }
+      box.hidden = true;
+    });
+  }
+</script>

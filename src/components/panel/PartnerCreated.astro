@@ -1,0 +1,79 @@
+---
+// Shown once after an admin adds a vendor, rider or admin: the sign-in details
+// to pass on. The temporary password is only shown here, never stored readable.
+import Icon from '../Icon.astro';
+import { prettyPhone } from '../../lib/format';
+
+interface Props {
+  role: 'vendor' | 'rider' | 'admin';
+  name: string;
+  phone: string;
+  password: string;
+  /** Where "Done" goes */
+  doneHref: string;
+  /** Where "Add another" goes */
+  againHref: string;
+}
+const { role, name, phone, password, doneHref, againHref } = Astro.props;
+const what: string = role;
+const signIn = `${Astro.url.origin}/partner/login`;
+const message = `Hello ${name}, your Relax&Bite ${what} account is ready.\n\nSign in at ${signIn}\nPhone: ${prettyPhone(phone)}\nTemporary password: ${password}\n\nAfter you sign in, tap the person icon (Your account) and change the password to one only you know.`;
+const whatsapp = `https://wa.me/233${phone.slice(1)}?text=${encodeURIComponent(message)}`;
+---
+
+<section class="card p-5 md:p-6 max-w-xl flex flex-col gap-5 settle-slow" aria-labelledby="created-h">
+  <div class="flex items-center gap-3">
+    <span class="size-11 rounded-full bg-success-soft text-success flex items-center justify-center shrink-0">
+      <svg class="draw-check" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>
+    </span>
+    <div>
+      <h2 id="created-h" class="text-xl font-extrabold">{name} can sign in now</h2>
+      <p class="text-sm text-muted">The {what} account is ready and approved.</p>
+    </div>
+  </div>
+
+  <dl class="rounded-xl bg-fill p-4 grid gap-3">
+    <div>
+      <dt class="text-xs font-semibold text-muted">Phone number</dt>
+      <dd class="font-bold tabular text-lg">{prettyPhone(phone)}</dd>
+    </div>
+    <div>
+      <dt class="text-xs font-semibold text-muted">Temporary password</dt>
+      <dd class="flex items-center gap-2 flex-wrap">
+        <code class="font-bold text-lg tracking-wide tabular" data-temp-password>{password}</code>
+        <button type="button" class="btn btn-ghost min-h-9 text-sm" data-copy={password}>Copy</button>
+      </dd>
+    </div>
+  </dl>
+
+  <p class="flex gap-2.5 items-start text-sm p-3 rounded-lg bg-warning-soft text-warning-ink">
+    <Icon name="info" size={18} class="shrink-0 mt-0.5" />
+    <span>This password is shown only once. Send it to {name} now, and ask them to change it under <strong>Your account</strong> after signing in.</span>
+  </p>
+
+  <div class="flex flex-col sm:flex-row gap-3">
+    <a href={whatsapp} target="_blank" rel="noopener" class="btn btn-primary flex-1">
+      <Icon name="chat" size={18} /> Send on WhatsApp
+    </a>
+    <button type="button" class="btn btn-secondary flex-1" data-copy={message}>Copy message</button>
+  </div>
+  <div class="flex gap-3 border-t border-line pt-4">
+    <a href={againHref} class="btn btn-ghost flex-1">Add another</a>
+    <a href={doneHref} class="btn btn-ghost flex-1">Done</a>
+  </div>
+</section>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const label = btn.textContent;
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy || '');
+        btn.textContent = 'Copied';
+      } catch {
+        btn.textContent = 'Copy failed';
+      }
+      window.setTimeout(() => (btn.textContent = label), 1600);
+    });
+  });
+</script>

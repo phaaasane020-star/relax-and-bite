@@ -1,0 +1,188 @@
+---
+import { clientInfo } from '../../lib/client-info';
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Alert from '../../components/panel/Alert.astro';
+import PartnerTabs from '../../components/panel/PartnerTabs.astro';
+import Icon from '../../components/Icon.astro';
+import { listAccounts, getRider, setAccountStatus, getVendorForAccount } from '../../data/partners';
+import { audit, getAllZones, getLocalities } from '../../data/store';
+import { field, flash, takeFlash } from '../../lib/actions';
+import { dateTime, prettyPhone, time12 } from '../../lib/format';
+
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = field(form, 'action');
+  const id = field(form, 'id');
+  const name = field(form, 'name');
+  try {
+    if (action === 'approve') {
+      await setAccountStatus(id, 'approved');
+      flash(Astro.cookies, `${name} approved. They can sign in and start now.`);
+    } else if (action === 'reject') {
+      await setAccountStatus(id, 'rejected', field(form, 'reason', 300));
+      flash(Astro.cookies, `${name}'s application was declined.`);
+    }
+    await audit(`${Astro.locals.partner!.full_name} (admin)`, `${action === 'approve' ? 'Approved' : 'Declined'} ${name}${action === 'reject' ? `: ${field(form, 'reason', 300)}` : ''}`, clientInfo(Astro));
+    return Astro.redirect('/admin/applications', 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const zones = await getAllZones();
+const zoneName = (id: number) => zones.find((z) => z.id === id)?.name ?? 'Unknown area';
+const localities = await getLocalities({ all: true });
+const localityName = (id: number | null) => localities.find((l) => l.id === id)?.name ?? 'Locality not listed';
+const pending = await listAccounts({ status: 'pending' });
+const rejected = await listAccounts({ status: 'rejected' });
+
+const cards = await Promise.all(
+  pending.map(async (a) => ({
+    account: a,
+    vendor: a.role === 'vendor' ? await getVendorForAccount(a) : undefined,
+    rider: a.role === 'rider' ? await getRider(a.rider_id) : undefined,
+  })),
+);
+const success = takeFlash(Astro.cookies);
+---
+
+<PanelLayout title="Applications">
+  <Alert error={error} success={success} />
+  <PartnerTabs />
+  <p class="text-sm text-muted mt-4">Check each applicant's details, and call them if anything looks wrong, before approving.</p>
+
+  {
+    cards.length === 0 && (
+      <div class="card p-8 mt-6 flex items-center gap-3">
+        <Icon name="check" size={22} class="text-success" />
+        <p class="font-semibold">No applications waiting. New ones appear here.</p>
+      </div>
+    )
+  }
+
+  <div class="mt-6 grid gap-4 xl:grid-cols-2">
+    {
+      cards.map(({ account: a, vendor, rider }) => {
+        const title = vendor?.name ?? a.full_name;
+        return (
+          <article class="card p-5 flex flex-col gap-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class:list={['size-10 rounded-xl flex items-center justify-center shrink-0', a.role === 'vendor' ? 'bg-brand-soft text-brand' : 'bg-success-soft text-success']}>
+                  <Icon name={a.role === 'vendor' ? 'store' : 'bike'} size={20} />
+                </span>
+                <div class="min-w-0">
+                  <h2 class="font-extrabold truncate">{title}</h2>
+                  <p class="text-sm text-muted">{a.role === 'vendor' ? 'Vendor' : 'Rider'} application, {dateTime(a.created_at)}</p>
+                </div>
+              </div>
+            </div>
+
+            <dl class="grid gap-x-6 gap-y-3 sm:grid-cols-2 text-sm">
+              {vendor && (
+                <>
+                  <div><dt class="text-muted">Owner</dt><dd class="font-semibold">{a.full_name}</dd></div>
+                  <div><dt class="text-muted">Sells</dt><dd class="font-semibold">{vendor.description || vendor.cuisine_tags.join(', ') || 'Added after approval'}</dd></div>
+                  <div><dt class="text-muted">Location</dt><dd class="font-semibold">{[vendor.address, vendor.locality_id ? localityName(vendor.locality_id) : '', zoneName(vendor.zone_id)].filter(Boolean).join(', ')}</dd></div>
+                  <div><dt class="text-muted">Business type</dt><dd class="font-semibold">{vendor.business_type || 'Not given'}</dd></div>
+                </>
+              )}
+              {rider && (
+                <>
+                  <div><dt class="text-muted">Area</dt><dd class="font-semibold">{zoneName(rider.zone_id)}</dd></div>
+                  <div><dt class="text-muted">Vehicle</dt><dd class="font-semibold capitalize">{rider.vehicle}{rider.plate_number && `, ${rider.plate_number}`}</dd></div>
+                  <div><dt class="text-muted">Licence</dt><dd class="font-semibold">{rider.licence_number || 'Not needed'}</dd></div>
+                  <div><dt class="text-muted">Ghana Card</dt><dd class="font-semibold tabular">{rider.ghana_card}</dd></div>
+                  <div><dt class="text-muted">Emergency contact</dt><dd class="font-semibold">{rider.emergency_name}, <span class="tabular">{prettyPhone(rider.emergency_phone)}</span></dd></div>
+                </>
+              )}
+              <div><dt class="text-muted">Phone</dt><dd class="font-semibold"><a href={`tel:${a.phone}`} class="text-ink tabular">{prettyPhone(a.phone)}</a></dd></div>
+            </dl>
+
+            {rider && (
+              <div class="flex flex-wrap gap-4">
+                <figure class="flex flex-col gap-1.5">
+                  {rider.photo_url ? (
+                    <img src={rider.photo_url} alt={`Photo of ${rider.full_name}`} class="size-36 rounded-xl object-cover border border-line" />
+                  ) : (
+                    <span class="size-28 rounded-xl bg-fill flex items-center justify-center text-xs text-muted text-center p-2">No photo</span>
+                  )}
+                  <figcaption class="text-xs text-muted">Face photo</figcaption>
+                </figure>
+                <figure class="flex flex-col gap-1.5">
+                  {rider.ghana_card_photo_url ? (
+                    <img src={rider.ghana_card_photo_url} alt="Ghana Card" class="h-36 w-56 rounded-xl object-contain bg-fill border border-line" />
+                  ) : (
+                    <span class="h-28 w-44 rounded-xl bg-fill flex items-center justify-center text-xs text-muted">No card photo</span>
+                  )}
+                  <figcaption class="text-xs text-muted">Ghana Card. Check the name, number and face match.</figcaption>
+                </figure>
+              </div>
+            )}
+
+            <div class="flex flex-wrap gap-2 pt-1">
+              <form method="post" data-confirm={`Approve ${title}?`} data-confirm-message={a.role === 'vendor' ? 'Their store can go live as soon as they open it.' : 'They can go online and accept deliveries straight away.'} data-confirm-label="Approve">
+                <input type="hidden" name="action" value="approve" />
+                <input type="hidden" name="id" value={a.id} />
+                <input type="hidden" name="name" value={title} />
+                <button type="submit" class="btn btn-primary">Approve</button>
+              </form>
+              <button type="button" class="btn btn-secondary text-danger" data-reject={a.id} data-name={title}>Decline</button>
+              <a href={`tel:${a.phone}`} class="btn btn-ghost text-ink"><Icon name="phone" size={18} /> Call</a>
+            </div>
+          </article>
+        );
+      })
+    }
+  </div>
+
+  {
+    rejected.length > 0 && (
+      <section class="mt-10" aria-labelledby="rej-h">
+        <h2 id="rej-h" class="section-title text-lg font-extrabold mb-3">Declined</h2>
+        <ul class="card divide-y divide-line text-sm">
+          {rejected.map((a) => (
+            <li class="px-5 py-3 flex flex-wrap justify-between gap-2">
+              <span><strong>{a.full_name}</strong> <span class="text-muted capitalize">({a.role})</span></span>
+              <span class="text-muted">{a.status_reason}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  <dialog id="reject-dialog" class="sheet" aria-labelledby="reject-title">
+    <form method="post" class="p-6 flex flex-col gap-4">
+      <input type="hidden" name="action" value="reject" />
+      <input type="hidden" name="id" />
+      <input type="hidden" name="name" />
+      <h2 id="reject-title" class="text-lg font-extrabold">Decline application</h2>
+      <div>
+        <label class="field-label" for="reject-reason">Reason</label>
+        <textarea id="reject-reason" name="reason" rows="3" class="field-input" placeholder="For example, we couldn't confirm your Ghana Card details" required></textarea>
+        <p class="field-hint">The applicant sees this when they sign in.</p>
+      </div>
+      <div class="flex gap-3">
+        <button type="button" data-close class="btn btn-secondary flex-1">Back</button>
+        <button type="submit" class="btn btn-danger flex-1">Decline application</button>
+      </div>
+    </form>
+  </dialog>
+</PanelLayout>
+
+<script>
+  const dialog = document.getElementById('reject-dialog') as HTMLDialogElement;
+  const form = dialog.querySelector('form')!;
+  document.querySelectorAll<HTMLButtonElement>('[data-reject]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      form.reset();
+      (form.elements.namedItem('id') as HTMLInputElement).value = btn.dataset.reject!;
+      (form.elements.namedItem('name') as HTMLInputElement).value = btn.dataset.name!;
+      dialog.querySelector('#reject-title')!.textContent = `Decline ${btn.dataset.name}`;
+      dialog.showModal();
+    }),
+  );
+</script>

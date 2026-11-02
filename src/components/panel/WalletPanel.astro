@@ -1,0 +1,188 @@
+---
+// The wallet page for restaurants and riders: balance, withdraw to MoMo,
+// past withdrawals and recent earnings.
+import Alert from './Alert.astro';
+import Icon from '../Icon.astro';
+import { getWallet, NETWORK_LABEL, splitWithdrawal, type Network } from '../../data/wallet';
+import { takeFlash } from '../../lib/actions';
+import { dateTime, money, phoneNetwork, prettyPhone } from '../../lib/format';
+import { SITE } from '../../data/site';
+
+interface Props {
+  /** From the page after a failed withdrawal request */
+  error?: string;
+  typed?: { amount: string; phone: string; network: string };
+}
+const account = Astro.locals.partner!;
+const error = Astro.props.error ?? '';
+const openSheet = Boolean(error);
+const typed = Astro.props.typed ?? { amount: '', phone: account.phone, network: '' };
+
+const success = takeFlash(Astro.cookies);
+const w = await getWallet(account);
+const pct = Math.round(w.feeRate * 100);
+const fullPct = Math.round(SITE.commissionRate * 100);
+const guessNetwork = (() => {
+  const n = phoneNetwork(typed.phone);
+  return (typed.network || (n === 'MTN' ? 'mtn' : n === 'Telecel' ? 'telecel' : n === 'AirtelTigo' ? 'airteltigo' : 'mtn')) as Network;
+})();
+const preview = splitWithdrawal(w.balance, w.feeRate);
+const canWithdraw = !w.open && w.balance >= SITE.minWithdrawal;
+const freeEnds = w.freeUntil ? new Date(w.freeUntil).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : '';
+const statusChip = { requested: 'bg-warning-soft text-warning-ink', paid: 'bg-success-soft text-success', rejected: 'bg-fill text-ink-soft' } as const;
+const statusLabel = { requested: 'Waiting', paid: 'Sent', rejected: 'Not sent' } as const;
+---
+
+<div class="max-w-2xl">
+  <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Wallet</h1>
+  <p class="text-sm text-muted mt-1">
+    {account.role === 'vendor' ? 'The food price of every delivered order comes here.' : 'The delivery fee of every delivery you finish comes here.'}
+  </p>
+
+  <div class="mt-5"><Alert error={openSheet ? '' : error} success={success} /></div>
+
+  <!-- Balance -->
+  <section class="notify-hero" aria-labelledby="bal-h">
+    <p id="bal-h" class="text-sm font-semibold text-muted">Available to withdraw</p>
+    <p class="text-[2.25rem] leading-tight font-extrabold tracking-tight tabular mt-1">{money(w.balance)}</p>
+    <p class="text-sm text-muted mt-1">
+      {w.feeRate === 0 ? `Free first month: no fee on withdrawals until ${freeEnds}.` : `Relax&Bite's ${pct}% comes off when you withdraw.`}
+    </p>
+    <button type="button" data-withdraw-open disabled={!canWithdraw} class="btn btn-on-brand btn-lg w-full mt-5 disabled:opacity-60">
+      {w.open ? 'Withdrawal on its way' : 'Withdraw to MoMo'}
+    </button>
+    {!w.open && w.balance > 0 && w.balance < SITE.minWithdrawal && <p class="text-sm text-muted mt-2 text-center">You can withdraw from {money(SITE.minWithdrawal)}.</p>}
+  </section>
+
+  <dl class="card mt-4 grid grid-cols-2 divide-x divide-line py-4 text-center">
+    <div class="flex flex-col-reverse gap-0.5"><dt class="text-[0.8125rem] text-muted">Earned in total</dt><dd class="text-lg font-extrabold tabular">{money(w.earned)}</dd></div>
+    <div class="flex flex-col-reverse gap-0.5"><dt class="text-[0.8125rem] text-muted">Withdrawn</dt><dd class="text-lg font-extrabold tabular">{money(w.withdrawn)}</dd></div>
+  </dl>
+
+  {
+    w.open && (
+      <section class="card mt-4 p-4 flex items-center gap-4" aria-label="Waiting withdrawal">
+        <span class="acc-icon"><Icon name="clock" size={20} /></span>
+        <div class="flex-1 min-w-0">
+          <p class="font-bold">{money(w.open.payout)} on its way</p>
+          <p class="text-sm text-muted">To {NETWORK_LABEL[w.open.momo_network]} {prettyPhone(w.open.momo_number)}. Asked {dateTime(w.open.created_at)}.</p>
+        </div>
+      </section>
+    )
+  }
+
+  <section class="mt-6" aria-labelledby="hist-h">
+    <h2 id="hist-h" class="section-title text-lg font-extrabold mb-3">Withdrawals</h2>
+    {
+      w.withdrawals.length === 0 ? (
+        <p class="text-sm text-muted">No withdrawals yet.</p>
+      ) : (
+        <ul class="card divide-y divide-line overflow-hidden">
+          {w.withdrawals.map((x) => (
+            <li class="p-4 flex items-start gap-3">
+              <div class="flex-1 min-w-0">
+                <p class="font-bold tabular">{money(x.payout)} <span class="text-sm font-medium text-muted">to {NETWORK_LABEL[x.momo_network]} {prettyPhone(x.momo_number)}</span></p>
+                <p class="text-[0.8125rem] text-muted">
+                  {dateTime(x.created_at)} · {money(x.amount)} from wallet{x.fee > 0 ? `, ${money(x.fee)} fee` : ', no fee'}
+                </p>
+                {x.note && <p class="text-[0.8125rem] mt-0.5">{x.status === 'paid' ? `MoMo ID: ${x.note}` : x.note}</p>}
+              </div>
+              <span class:list={['badge h-6 text-xs shrink-0', statusChip[x.status]]}>{statusLabel[x.status]}</span>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
+
+  <section class="mt-6" aria-labelledby="earn-h">
+    <h2 id="earn-h" class="section-title text-lg font-extrabold mb-3">Recent earnings</h2>
+    {
+      w.recent.length === 0 ? (
+        <p class="text-sm text-muted">{account.role === 'vendor' ? 'Delivered orders show here.' : 'Finished deliveries show here.'}</p>
+      ) : (
+        <ul class="card divide-y divide-line overflow-hidden">
+          {w.recent.map((r) => (
+            <li class="px-4 py-3 flex items-center gap-3">
+              <div class="flex-1 min-w-0">
+                <p class="font-semibold truncate">{r.label}</p>
+                <p class="text-[0.8125rem] text-muted tabular">{r.code} · {dateTime(r.at)}</p>
+              </div>
+              <span class="font-bold text-success tabular">+{money(r.amount)}</span>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
+</div>
+
+<!-- Withdraw sheet -->
+<dialog id="withdraw-sheet" class="sheet" aria-labelledby="wd-title" data-open-now={openSheet ? '1' : undefined} data-balance={w.balance} data-rate={w.feeRate}>
+  <form method="post" class="p-5 sm:p-6 pt-7 flex flex-col gap-4" novalidate>
+    <div class="flex items-center justify-between gap-3">
+      <h2 id="wd-title" class="text-xl font-extrabold tracking-tight">Withdraw to MoMo</h2>
+      <button type="button" data-close class="icon-btn icon-btn-round border-0 -mr-2 text-muted" aria-label="Close"><Icon name="x" size={20} /></button>
+    </div>
+    {openSheet && error && <p data-form-error role="alert" class="text-sm font-semibold text-danger">{error}</p>}
+    <div>
+      <label for="wd-amount" class="field-label">Amount</label>
+      <div class="relative">
+        <span class="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-muted">GH₵</span>
+        <input id="wd-amount" name="amount" type="number" inputmode="decimal" step="0.01" min={SITE.minWithdrawal} max={w.balance} class="field-input field-lg pl-14 text-lg font-bold tabular" value={typed.amount || w.balance.toFixed(2)} required />
+      </div>
+      <p class="field-hint">Up to {money(w.balance)}. <button type="button" data-all class="font-bold text-brand">Withdraw all</button></p>
+    </div>
+    <fieldset>
+      <legend class="field-label">MoMo network</legend>
+      <div class="grid grid-cols-3 gap-2">
+        {(Object.keys(NETWORK_LABEL) as Network[]).map((n) => (
+          <label class="co-pay !min-h-12">
+            <input type="radio" name="network" value={n} checked={guessNetwork === n} class="sr-only" />
+            <span class="text-sm font-bold">{NETWORK_LABEL[n]}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+    <div>
+      <label for="wd-phone" class="field-label">MoMo number</label>
+      <input id="wd-phone" name="phone" type="tel" inputmode="tel" class="field-input field-lg" value={typed.phone} required />
+    </div>
+    <dl class="rounded-2xl bg-fill p-4 flex flex-col gap-1.5 text-[0.9375rem]">
+      <div class="flex justify-between"><dt class="text-muted">From your wallet</dt><dd class="tabular font-semibold" data-wd-amount>{money(w.balance)}</dd></div>
+      <div class="flex justify-between"><dt class="text-muted">Relax&amp;Bite fee ({w.feeRate === 0 ? `free, normally ${fullPct}%` : `${pct}%`})</dt><dd class="tabular font-semibold" data-wd-fee>{preview.fee > 0 ? `− ${money(preview.fee)}` : money(0)}</dd></div>
+      <div class="h-px bg-line my-1"></div>
+      <div class="flex justify-between text-lg font-extrabold"><dt>You receive</dt><dd class="tabular" data-wd-payout>{money(preview.payout)}</dd></div>
+    </dl>
+    <p class="text-[0.8125rem] text-muted">We send it to this number by Mobile Money, usually the same day. You'll get a notification when it's sent.</p>
+    <button type="submit" class="btn btn-primary btn-lg w-full rounded-2xl">Request withdrawal</button>
+  </form>
+</dialog>
+
+<script>
+  const sheet = document.getElementById('withdraw-sheet') as HTMLDialogElement;
+  const balance = Number(sheet.dataset.balance);
+  const rate = Number(sheet.dataset.rate);
+  const amount = sheet.querySelector<HTMLInputElement>('#wd-amount')!;
+  const cedis = (n: number) => `GH₵ ${n.toFixed(2)}`;
+  const update = () => {
+    const a = Math.max(0, Math.min(Number(amount.value) || 0, balance));
+    const fee = Math.round(a * rate * 100) / 100;
+    sheet.querySelector('[data-wd-amount]')!.textContent = cedis(a);
+    sheet.querySelector('[data-wd-fee]')!.textContent = fee > 0 ? `− ${cedis(fee)}` : cedis(0);
+    sheet.querySelector('[data-wd-payout]')!.textContent = cedis(Math.round((a - fee) * 100) / 100);
+  };
+  amount.addEventListener('input', update);
+  sheet.querySelector('[data-all]')!.addEventListener('click', () => {
+    amount.value = balance.toFixed(2);
+    update();
+  });
+  document.querySelector('[data-withdraw-open]')?.addEventListener('click', () => {
+    update();
+    sheet.showModal();
+  });
+  if (sheet.dataset.openNow) {
+    update();
+    sheet.showModal();
+  }
+</script>

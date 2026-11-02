@@ -1,0 +1,166 @@
+---
+// Customer notifications: allow them on this phone, and choose which updates to get.
+import AppLayout from '../../layouts/AppLayout.astro';
+import Icon from '../../components/Icon.astro';
+import { getUser } from '../../lib/session';
+import { getCustomerNotifyPrefs, pushReady } from '../../data/push';
+import { vapidPublicKey } from '../../lib/webpush';
+
+const user = getUser(Astro.cookies);
+if (!user) return Astro.redirect('/login?next=/account/notifications');
+const prefs = await getCustomerNotifyPrefs(user.id);
+const ready = pushReady();
+
+const topics = [
+  { key: 'orders', icon: 'receipt', label: 'Order updates', detail: 'Accepted, ready, delivered or cancelled', on: prefs.orders },
+  { key: 'rider', icon: 'bike', label: 'Rider updates', detail: 'When a rider collects your order and is on the way', on: prefs.rider },
+] as const;
+---
+
+<AppLayout title="Notifications" mobileHeader="none">
+  <div class="container-app max-w-2xl pt-[calc(var(--sat)+1rem)] md:pt-10 pb-6">
+    <div class="flex items-center gap-3">
+      <a href="/account" data-back class="icon-btn icon-btn-round bg-fill border-0 -ml-1" aria-label="Back">
+        <Icon name="chevron-left" size={22} />
+      </a>
+      <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Notifications</h1>
+    </div>
+
+    <section
+      class="notify-hero mt-6"
+      data-notify-page
+      data-web-key={ready.web ? vapidPublicKey() : ''}
+      data-app-ready={ready.app ? '1' : undefined}
+      data-state="checking"
+      aria-live="polite"
+    >
+      <span class="notify-hero-icon">
+        <Icon name="bell" size={28} class="nh-on" />
+        <Icon name="bell-off" size={28} class="nh-off" />
+      </span>
+      <h2 class="text-xl font-extrabold mt-4" data-nh-title>Checking…</h2>
+      <p class="text-[0.9375rem] mt-1 text-muted" data-nh-text>Get updates about your orders on this phone, straight from Relax&amp;Bite.</p>
+    </section>
+
+    <ul class="mt-4 flex flex-col gap-3">
+      <li class="card flex items-center gap-4 p-4">
+        <span class="acc-icon"><Icon name="bell" size={20} /></span>
+        <span class="flex-1 min-w-0 flex flex-col">
+          <span class="font-bold">Allow notifications</span>
+          <span class="text-sm text-muted" data-device-text>On this phone</span>
+        </span>
+        <button type="button" role="switch" aria-checked="false" class="switch" data-device-switch aria-label="Allow notifications on this phone"></button>
+      </li>
+      {
+        topics.map((t) => (
+          <li class="card flex items-center gap-4 p-4">
+            <span class="acc-icon"><Icon name={t.icon} size={20} /></span>
+            <span class="flex-1 min-w-0 flex flex-col">
+              <span class="font-bold">{t.label}</span>
+              <span class="text-sm text-muted">{t.detail}</span>
+            </span>
+            <button type="button" role="switch" aria-checked={t.on ? 'true' : 'false'} class="switch" data-topic={t.key} aria-label={t.label}></button>
+          </li>
+        ))
+      }
+    </ul>
+    <button type="button" data-test hidden class="btn btn-secondary w-full mt-4">Send a test notification</button>
+    <p class="text-sm text-danger font-semibold mt-3" data-error hidden></p>
+  </div>
+</AppLayout>
+
+<script>
+  import { pushState, sendTestPush, turnOffPush, turnOnPush, type PushState } from '../../lib/push-client';
+
+  const page = document.querySelector<HTMLElement>('[data-notify-page]')!;
+  const opts = { webKey: page.dataset.webKey ?? '', appReady: page.hasAttribute('data-app-ready'), as: 'customer' as const };
+  const title = page.querySelector<HTMLElement>('[data-nh-title]')!;
+  const text = page.querySelector<HTMLElement>('[data-nh-text]')!;
+  const device = document.querySelector<HTMLButtonElement>('[data-device-switch]')!;
+  const deviceText = document.querySelector<HTMLElement>('[data-device-text]')!;
+  const test = document.querySelector<HTMLButtonElement>('[data-test]')!;
+  const error = document.querySelector<HTMLElement>('[data-error]')!;
+  const inApp = document.documentElement.classList.contains('in-app');
+
+  const showError = (msg: string) => {
+    error.textContent = msg;
+    error.hidden = !msg;
+  };
+
+  function show(state: PushState) {
+    const on = state === 'on';
+    page.dataset.state = on ? 'on' : 'off';
+    device.setAttribute('aria-checked', String(on));
+    device.disabled = state === 'unsupported' || state === 'old-app';
+    test.hidden = !on;
+    title.textContent = on ? 'Notifications are on' : 'Notifications are off';
+    const msg: Record<PushState, string> = {
+      on: "You'll hear from us on this phone when your order moves along.",
+      off: 'Turn them on to know when your food is accepted, on the way and delivered.',
+      blocked: inApp
+        ? 'Blocked in your phone settings. Open Settings > Apps > Relax&Bite > Notifications and turn them on.'
+        : 'Blocked in this browser. Tap the lock icon next to the web address, choose Notifications, then Allow.',
+      unsupported: opts.webKey || opts.appReady ? "This browser can't show notifications. Try the Relax&Bite app or Chrome." : "Notifications aren't available yet.",
+      'old-app': 'Update the Relax&Bite app to get notifications.',
+    };
+    text.textContent = msg[state];
+    deviceText.textContent = on ? 'On for this phone' : state === 'blocked' ? 'Blocked in settings' : 'Off for this phone';
+  }
+
+  pushState(opts)
+    .then(async (state) => {
+      // Already allowed: make sure this device is saved to the account
+      if (state === 'on') state = await turnOnPush({ ...opts, ask: false }).catch(() => state);
+      show(state);
+    })
+    .catch(() => show('unsupported'));
+
+  device.addEventListener('click', async () => {
+    showError('');
+    device.disabled = true;
+    try {
+      if (device.getAttribute('aria-checked') === 'true') {
+        if (inApp) {
+          showError('To turn them off, open your phone Settings > Apps > Relax&Bite > Notifications.');
+        } else {
+          await turnOffPush('customer');
+          show('off');
+        }
+      } else {
+        show(await turnOnPush({ ...opts, ask: true }));
+      }
+    } catch (e) {
+      showError((e as Error).message || "Couldn't change that. Try again.");
+    }
+    device.disabled = false;
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('[data-topic]').forEach((sw) => {
+    sw.addEventListener('click', async () => {
+      const on = sw.getAttribute('aria-checked') !== 'true';
+      sw.setAttribute('aria-checked', String(on));
+      showError('');
+      const res = await fetch('/api/account/notify-prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: sw.dataset.topic, on }),
+      }).catch(() => null);
+      if (!res?.ok) {
+        sw.setAttribute('aria-checked', String(!on));
+        showError("Couldn't save that. Check your connection and try again.");
+      }
+    });
+  });
+
+  test.addEventListener('click', async () => {
+    test.disabled = true;
+    try {
+      const n = await sendTestPush('customer');
+      showError(n ? '' : 'Nothing was sent. Turn notifications off and on again.');
+      if (n) test.textContent = 'Test sent';
+    } catch (e) {
+      showError((e as Error).message);
+    }
+    test.disabled = false;
+  });
+</script>

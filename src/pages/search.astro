@@ -1,0 +1,347 @@
+---
+// Search: a search bar at the top. Before typing: recent searches and popular
+// food types. While typing: suggestions appear straight away (food names from
+// a built-in list, then matching dishes and restaurants from the database).
+// Enter or tapping a suggestion opens the full results.
+import AppLayout from '../layouts/AppLayout.astro';
+import FoodImage from '../components/FoodImage.astro';
+import Icon from '../components/Icon.astro';
+import { getFoodCategories, search, vendorStatusLabel } from '../data/store';
+import { vendorFoodTypes } from '../data/catalog';
+import { money } from '../lib/format';
+import { getLocation } from '../lib/session';
+
+const q = Astro.url.searchParams.get('q')?.trim() ?? '';
+const category = Astro.url.searchParams.get('category')?.trim() ?? '';
+// Only restaurants in the customer's town, once they've chosen one
+const results = await search(q, category, getLocation(Astro.cookies)?.zoneId);
+const popular = getFoodCategories();
+const term = q || category;
+const dishes = results.items;
+const places = results.vendors;
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+// Food names suggested the moment someone starts typing (no waiting for the internet)
+const foodWords = [
+  ...vendorFoodTypes,
+  'Jollof rice', 'Banku and tilapia', 'Fufu and light soup', 'Fufu and groundnut soup', 'Kenkey and fish', 'Omotuo',
+  'Ampesi', 'Eto', 'Hausa koko', 'Gari and beans', 'Palava sauce', 'Abunuabunu', 'Yam and egg stew', 'Fried yam',
+  'Fried plantain', 'Plain rice', 'Jollof and chicken', 'Waakye special', 'Spaghetti', 'Sobolo', 'Meat pie', 'Sausage', 'Grilled chicken', 'Goat meat',
+].filter((w, i, all) => all.findIndex((x) => x.toLowerCase() === w.toLowerCase()) === i);
+---
+
+<AppLayout title={term ? `Search: ${term}` : 'Search'} query={q} mobileHeader="none">
+  <!-- Search bar (phones; bigger screens use the one in the header) -->
+  <div class="search-top md:hidden sticky top-0 z-20 bg-surface border-b border-line pt-[var(--sat)]">
+    <form action="/search" method="get" role="search" class="container-app h-[4.25rem] flex items-center gap-2" data-search-form>
+      <a href="/" data-back class="icon-btn icon-btn-round border-0 -ml-2 shrink-0" aria-label="Back">
+        <Icon name="chevron-left" size={24} />
+      </a>
+      <label class="flex-1 min-w-0 flex items-center gap-2.5 h-12 px-4 rounded-full bg-fill text-muted focus-within:ring-2 focus-within:ring-brand/40">
+        <Icon name="search" size={20} class="shrink-0" />
+        <input
+          type="search"
+          name="q"
+          value={term}
+          placeholder="Search food or restaurants"
+          aria-label="Search food or restaurants"
+          autocomplete="off"
+          enterkeyhint="search"
+          autofocus={!term}
+          data-search-input
+          class="flex-1 min-w-0 border-0 bg-transparent p-0 text-base text-ink placeholder:text-faint focus:ring-0 [&::-webkit-search-cancel-button]:hidden"
+        />
+        <button type="button" data-search-clear hidden={!term} class="shrink-0 -mr-1.5 size-8 rounded-full flex items-center justify-center text-muted hover:text-ink" aria-label="Clear search">
+          <Icon name="x" size={18} />
+        </button>
+      </label>
+    </form>
+  </div>
+
+  <!-- Suggestions while typing (filled in by the script below) -->
+  <div class="container-app md:max-w-3xl pt-2 pb-6" data-suggest hidden aria-live="polite">
+    <ul class="divide-y divide-line" data-suggest-words></ul>
+    <p class="text-xs font-bold uppercase tracking-wide text-faint mt-5 mb-1" data-suggest-dish-h hidden>Dishes</p>
+    <ul class="divide-y divide-line" data-suggest-dishes></ul>
+    <p class="text-xs font-bold uppercase tracking-wide text-faint mt-5 mb-1" data-suggest-place-h hidden>Restaurants</p>
+    <ul class="divide-y divide-line" data-suggest-places></ul>
+  </div>
+  <script type="application/json" data-food-words set:html={JSON.stringify(foodWords)}></script>
+
+  <div class="container-app md:max-w-3xl pt-5 md:pt-8 pb-6" data-search-results aria-live="polite">
+    {
+      !term && (
+        <div class="flex flex-col gap-7">
+          <section data-recent hidden aria-labelledby="recent-h">
+            <div class="flex items-center justify-between gap-3">
+              <h2 id="recent-h" class="text-lg font-extrabold tracking-tight">Recent searches</h2>
+              <button type="button" data-recent-clear class="text-sm font-bold text-brand">Clear</button>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2.5" data-recent-list></div>
+          </section>
+          <section aria-labelledby="popular-h">
+            <h2 id="popular-h" class="text-lg font-extrabold tracking-tight">Popular</h2>
+            <div class="mt-3 flex flex-wrap gap-2.5">
+              {popular.map((c) => <a href={`/search?q=${encodeURIComponent(c)}`} class="search-chip">{c}</a>)}
+            </div>
+          </section>
+        </div>
+      )
+    }
+
+    {
+      term && dishes.length + places.length === 0 && (
+        <div class="py-16 flex flex-col items-center text-center">
+          <span class="size-16 rounded-2xl bg-brand-tint text-brand flex items-center justify-center"><Icon name="search" size={28} /></span>
+          <h1 class="text-xl font-extrabold mt-5">No results for “{term}”</h1>
+          <p class="text-muted mt-2 max-w-xs">Check the spelling, or try a broader word like rice, soup or chicken.</p>
+        </div>
+      )
+    }
+
+    {
+      term && dishes.length + places.length > 0 && (
+        <>
+          <h1 class="sr-only">Results for “{term}”</h1>
+          <p class="text-sm font-semibold text-muted">
+            {[dishes.length && plural(dishes.length, 'dish', 'dishes'), places.length && plural(places.length, 'restaurant', 'restaurants')].filter(Boolean).join(' · ')}
+          </p>
+
+          {places.length > 0 && (
+            <section class="mt-2" aria-label="Restaurants">
+              <ul class="divide-y divide-line">
+                {places.map((v) => (
+                  <li>
+                    <a href={`/vendors/${v.slug}`} class="search-row">
+                      <span class="search-thumb"><FoodImage src={v.cover_url} alt="" class:list={['size-full', !v.is_open && 'grayscale-[0.5] opacity-80']} /></span>
+                      <span class="flex-1 min-w-0 flex flex-col items-start gap-1">
+                        <span class="search-tag">Restaurant</span>
+                        <span class="font-extrabold text-[1.0625rem] leading-snug truncate max-w-full">{v.name}</span>
+                        <span class:list={['text-sm truncate max-w-full', v.is_open ? 'text-success font-semibold' : 'text-muted']}>{vendorStatusLabel(v)}</span>
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {dishes.length > 0 && (
+            <section class:list={[places.length > 0 && 'border-t border-line']} aria-label="Dishes">
+              <ul class="divide-y divide-line">
+                {dishes.map((i) => {
+                  const unavailable = !i.vendor.is_open ? 'Closed' : !i.is_available ? 'Sold out' : '';
+                  return (
+                    <li>
+                      <a href={`/vendors/${i.vendor.slug}#item-${i.id}`} class="search-row">
+                        <span class="search-thumb"><FoodImage src={i.image_url} alt="" class:list={['size-full', unavailable && 'grayscale-[0.5] opacity-80']} /></span>
+                        <span class="flex-1 min-w-0 flex flex-col items-start gap-1">
+                          <span class:list={['search-tag', unavailable && 'search-tag-muted']}>{unavailable || 'Dish'}</span>
+                          <span class="font-extrabold text-[1.0625rem] leading-snug truncate max-w-full">{i.name}</span>
+                          <span class="text-sm text-muted truncate max-w-full">{i.vendor.name}</span>
+                          <span class="font-extrabold text-brand tabular">{money(i.price)}</span>
+                        </span>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+        </>
+      )
+    }
+  </div>
+</AppLayout>
+
+<script>
+  // Suggestions as you type; Enter (or tapping one) opens the full results.
+  // Recent searches are kept on this device.
+  const KEY = 'rb_recent_searches';
+  const readRecent = (): string[] => {
+    try {
+      const v = JSON.parse(localStorage.getItem(KEY) || '[]');
+      return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 8) : [];
+    } catch {
+      return [];
+    }
+  };
+  const writeRecent = (list: string[]) => {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(list.slice(0, 8)));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const remember = (term: string) => {
+    const t = term.trim();
+    if (t.length < 2) return;
+    writeRecent([t, ...readRecent().filter((x) => x.toLowerCase() !== t.toLowerCase())]);
+  };
+
+  // Recent searches (before typing)
+  const recentBox = document.querySelector<HTMLElement>('[data-recent]');
+  const recentList = document.querySelector<HTMLElement>('[data-recent-list]');
+  if (recentBox && recentList) {
+    const recent = readRecent();
+    recentBox.hidden = recent.length === 0;
+    recentList.replaceChildren(
+      ...recent.map((t) => {
+        const a = document.createElement('a');
+        a.href = `/search?q=${encodeURIComponent(t)}`;
+        a.className = 'search-chip';
+        a.textContent = t;
+        return a;
+      }),
+    );
+    document.querySelector('[data-recent-clear]')?.addEventListener('click', () => {
+      writeRecent([]);
+      recentBox.hidden = true;
+    });
+  }
+  const current = new URL(location.href).searchParams.get('q');
+  if (current) remember(current);
+
+  const input = document.querySelector<HTMLInputElement>('[data-search-input]');
+  const clear = document.querySelector<HTMLButtonElement>('[data-search-clear]');
+  const results = document.querySelector<HTMLElement>('[data-search-results]')!;
+  const panel = document.querySelector<HTMLElement>('[data-suggest]')!;
+  const wordsEl = panel.querySelector<HTMLElement>('[data-suggest-words]')!;
+  const dishesEl = panel.querySelector<HTMLElement>('[data-suggest-dishes]')!;
+  const placesEl = panel.querySelector<HTMLElement>('[data-suggest-places]')!;
+  const dishH = panel.querySelector<HTMLElement>('[data-suggest-dish-h]')!;
+  const placeH = panel.querySelector<HTMLElement>('[data-suggest-place-h]')!;
+  const foodWords = JSON.parse(document.querySelector('[data-food-words]')?.textContent || '[]') as string[];
+  const startValue = input?.value ?? '';
+
+  const cedi = (n: number) => `GH₵ ${n.toFixed(2)}`;
+  const go = (term: string) => {
+    remember(term);
+    window.location.href = `/search?q=${encodeURIComponent(term)}`;
+  };
+
+  /** The typed letters in bold inside a suggestion */
+  function highlight(el: HTMLElement, text: string, typed: string) {
+    const i = text.toLowerCase().indexOf(typed.toLowerCase());
+    if (i < 0 || !typed) {
+      el.textContent = text;
+      return;
+    }
+    const b = document.createElement('strong');
+    b.className = 'text-ink';
+    b.textContent = text.slice(i, i + typed.length);
+    el.replaceChildren(document.createTextNode(text.slice(0, i)), b, document.createTextNode(text.slice(i + typed.length)));
+  }
+
+  function row(href: string, title: string, sub: string, typed: string, image?: string | null, icon = false, muted = false): HTMLLIElement {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.href = href;
+    a.className = 'flex items-center gap-3 py-3 no-underline text-ink';
+    if (icon) {
+      const s = document.createElement('span');
+      s.className = 'size-10 rounded-full bg-fill text-muted flex items-center justify-center shrink-0';
+      s.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
+      a.append(s);
+    } else {
+      const t = document.createElement('span');
+      t.className = 'size-12 rounded-xl overflow-hidden shrink-0 bg-fill' + (muted ? ' opacity-60' : '');
+      if (image) {
+        const img = document.createElement('img');
+        img.src = image;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.className = 'size-full object-cover';
+        t.append(img);
+      } else t.classList.add('food-sketch');
+      a.append(t);
+    }
+    const text = document.createElement('span');
+    text.className = 'flex-1 min-w-0 flex flex-col';
+    const h = document.createElement('span');
+    h.className = 'truncate text-[0.9375rem] ' + (icon ? 'text-ink-soft' : 'font-bold');
+    highlight(h, title, typed);
+    text.append(h);
+    if (sub) {
+      const p = document.createElement('span');
+      p.className = 'text-sm text-muted truncate';
+      p.textContent = sub;
+      text.append(p);
+    }
+    a.append(text);
+    li.append(a);
+    return li;
+  }
+
+  let timer = 0;
+  let controller: AbortController | null = null;
+  let lastTyped = '';
+
+  function showWords(typed: string) {
+    const t = typed.toLowerCase();
+    const starts = foodWords.filter((w) => w.toLowerCase().startsWith(t));
+    const inside = foodWords.filter((w) => !w.toLowerCase().startsWith(t) && w.toLowerCase().includes(t));
+    const list = [...starts, ...inside].slice(0, 5);
+    wordsEl.replaceChildren(...list.map((w) => row(`/search?q=${encodeURIComponent(w)}`, w, '', typed, null, true)));
+  }
+
+  async function fetchMatches(typed: string) {
+    controller?.abort();
+    controller = new AbortController();
+    try {
+      const res = await fetch(`/api/search/suggest?q=${encodeURIComponent(typed)}`, { signal: controller.signal });
+      const data = (await res.json()) as {
+        dishes: { id: string; name: string; price: number; image_url: string | null; vendor_name: string; vendor_slug: string; open: boolean }[];
+        places: { name: string; slug: string; cover_url: string | null; open: boolean }[];
+      };
+      if (typed !== lastTyped) return;
+      dishesEl.replaceChildren(
+        ...data.dishes.map((d) => row(`/vendors/${d.vendor_slug}#item-${d.id}`, d.name, `${d.vendor_name} · ${cedi(d.price)}${d.open ? '' : ' · Closed'}`, typed, d.image_url, false, !d.open)),
+      );
+      placesEl.replaceChildren(...data.places.map((p) => row(`/vendors/${p.slug}`, p.name, p.open ? 'Open now' : 'Closed now', typed, p.cover_url, false, !p.open)));
+      dishH.hidden = data.dishes.length === 0;
+      placeH.hidden = data.places.length === 0;
+    } catch {
+      /* typing again cancels the last request; offline keeps the food names */
+    }
+  }
+
+  function onType() {
+    if (!input) return;
+    const typed = input.value.trim();
+    lastTyped = typed;
+    if (clear) clear.hidden = !input.value;
+    window.clearTimeout(timer);
+    // Nothing typed, or still showing what this page searched for: show the page as it is
+    if (!typed || input.value === startValue) {
+      panel.hidden = true;
+      results.hidden = false;
+      return;
+    }
+    results.hidden = true;
+    panel.hidden = false;
+    showWords(typed);
+    timer = window.setTimeout(() => fetchMatches(typed), 150);
+  }
+
+  if (input) {
+    input.addEventListener('input', onType);
+    // Enter: the full results page (works even if suggestions are slow)
+    input.form?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const typed = input.value.trim();
+      if (typed) go(typed);
+    });
+    clear?.addEventListener('click', () => {
+      input.value = '';
+      input.focus();
+      if (startValue) window.location.href = '/search';
+      else onType();
+    });
+    // Coming from the search box on Home: ready to type straight away
+    if (!input.value && matchMedia('(max-width: 767px)').matches) input.focus({ preventScroll: true });
+  }
+  // Opening a suggestion counts as a search worth remembering
+  panel.addEventListener('click', (e) => {
+    if ((e.target as Element).closest('a') && input?.value) remember(input.value);
+  });
+</script>

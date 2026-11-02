@@ -1,0 +1,188 @@
+---
+// Saved restaurants and dishes (the Favourites tab on the Orders page).
+// Saved on this device; the details are looked up when the tab opens.
+import Icon from './Icon.astro';
+import { getUser } from '../lib/session';
+
+const signedIn = Boolean(getUser(Astro.cookies));
+---
+
+{
+  !signedIn && (
+    <div class="py-16 px-6 flex flex-col items-center text-center gap-2">
+      <span class="empty-tile"><Icon name="bookmark" size={30} /></span>
+      <h2 class="text-lg font-extrabold mt-3">Sign in to see your favourites</h2>
+      <p class="text-muted max-w-sm">Save the restaurants and dishes you love, and order them again in a tap.</p>
+      <div class="mt-4 flex justify-center gap-3">
+        <a href="/login?next=%2Forders%3Ftab%3Dfavourites" data-open="auth" data-auth-mode="signup" class="btn btn-primary">Sign up</a>
+        <a href="/login?next=%2Forders%3Ftab%3Dfavourites" data-open="auth" class="btn btn-secondary">Sign in</a>
+      </div>
+    </div>
+  )
+}
+
+<div data-loading hidden={!signedIn} class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="status" aria-label="Loading your favourites">
+  {
+    [1, 2, 3].map(() => (
+      <div class="card flex gap-3.5 items-center p-3">
+        <span class="skeleton size-18 rounded-xl shrink-0"></span>
+        <span class="flex-1 flex flex-col gap-2">
+          <span class="skeleton skeleton-title w-3/5"></span>
+          <span class="skeleton skeleton-line w-2/5"></span>
+          <span class="skeleton skeleton-line w-1/4"></span>
+        </span>
+      </div>
+    ))
+  }
+</div>
+
+<!-- Empty -->
+<div data-empty hidden class="py-16 px-6 flex flex-col items-center text-center gap-2">
+  <span class="empty-tile"><Icon name="bookmark" size={30} /></span>
+  <h2 class="text-lg font-extrabold mt-3">No favourites yet</h2>
+  <p class="text-muted max-w-sm">Tap the save icon on any restaurant or dish and it will be saved here, so you can order it again quickly.</p>
+  <a href="/" class="btn btn-primary mt-4">Browse restaurants</a>
+</div>
+
+<!-- Dishes -->
+<section data-items-wrap hidden aria-labelledby="fav-dishes-h">
+  <h2 id="fav-dishes-h" class="section-title text-lg font-extrabold mb-3">Dishes</h2>
+  <ul data-items class="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-3"></ul>
+</section>
+
+<!-- Restaurants -->
+<section data-vendors-wrap hidden class="mt-8" aria-labelledby="fav-vendors-h">
+  <h2 id="fav-vendors-h" class="section-title text-lg font-extrabold mb-3">Restaurants</h2>
+  <ul data-vendors class="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-3"></ul>
+</section>
+
+<script>
+  import { getFavs, onFavChange } from '../lib/favourites';
+  import { money } from '../lib/format';
+
+  type V = { id: string; slug: string; name: string; cuisines: string; cover_url: string | null; is_open: boolean; status: string };
+  type I = {
+    id: string;
+    name: string;
+    price: number;
+    image_url: string | null;
+    is_available: boolean;
+    vendor_name: string;
+    vendor_slug: string;
+    vendor_open: boolean;
+  };
+
+  const q = (sel: string) => document.querySelector<HTMLElement>(sel)!;
+  const HEART =
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4.2-6.5 4.2v-16a1 1 0 0 1 1-1z"/></svg>';
+
+  function thumb(src: string | null, dim: boolean): HTMLElement {
+    if (src) {
+      const frame = document.createElement('span');
+      frame.className = `img-frame size-18 rounded-xl shrink-0 ${dim ? 'brightness-[0.6]' : ''}`;
+      const img = document.createElement('img');
+      img.alt = '';
+      img.decoding = 'async';
+      img.src = src;
+      frame.append(img);
+      return frame;
+    }
+    const box = document.createElement('span');
+    box.className = 'food-sketch size-18 rounded-xl shrink-0';
+    return box;
+  }
+
+  function heart(kind: 'vendor' | 'item', id: string, name: string): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'fav-btn absolute right-3 top-1/2 -translate-y-1/2';
+    b.dataset.fav = kind;
+    b.dataset.favId = id;
+    b.dataset.favName = name;
+    b.setAttribute('aria-pressed', 'true');
+    b.setAttribute('aria-label', `Remove ${name} from favourites`);
+    b.innerHTML = HEART;
+    return b;
+  }
+
+  function row(href: string, image: HTMLElement, title: string, lines: { text: string; cls: string }[], fav: HTMLButtonElement): HTMLLIElement {
+    const li = document.createElement('li');
+    li.className = 'relative';
+    const a = document.createElement('a');
+    a.href = href;
+    a.className = 'card flex gap-3.5 items-center p-3 pr-16 no-underline text-ink hover:border-line-strong';
+    const text = document.createElement('span');
+    text.className = 'flex flex-col gap-0.5 min-w-0';
+    const t = document.createElement('span');
+    t.className = 'font-bold truncate';
+    t.textContent = title;
+    text.append(t);
+    for (const l of lines) {
+      const s = document.createElement('span');
+      s.className = l.cls;
+      s.textContent = l.text;
+      text.append(s);
+    }
+    a.append(image, text);
+    li.append(a, fav);
+    return li;
+  }
+
+  async function render() {
+    const favs = getFavs();
+    q('[data-loading]').hidden = true;
+    if (!favs.vendors.length && !favs.items.length) {
+      q('[data-empty]').hidden = false;
+      q('[data-items-wrap]').hidden = true;
+      q('[data-vendors-wrap]').hidden = true;
+      return;
+    }
+    const res = await fetch('/api/favourites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(favs),
+    });
+    const data = (await res.json().catch(() => ({ vendors: [], items: [] }))) as { vendors: V[]; items: I[] };
+    // Keep the order the person saved them in
+    const items = favs.items.map((id) => data.items.find((i) => i.id === id)).filter((x): x is I => !!x);
+    const vendors = favs.vendors.map((id) => data.vendors.find((v) => v.id === id)).filter((x): x is V => !!x);
+
+    q('[data-empty]').hidden = items.length + vendors.length > 0;
+    q('[data-items-wrap]').hidden = items.length === 0;
+    q('[data-vendors-wrap]').hidden = vendors.length === 0;
+
+    q('[data-items]').replaceChildren(
+      ...items.map((i) => {
+        const note = !i.vendor_open ? 'Restaurant closed now' : !i.is_available ? 'Sold out today' : '';
+        return row(
+          `/vendors/${i.vendor_slug}#item-${i.id}`,
+          thumb(i.image_url, !!note),
+          i.name,
+          [
+            { text: i.vendor_name, cls: 'text-sm text-muted truncate' },
+            { text: note || money(i.price), cls: note ? 'text-[0.8125rem] font-bold text-muted' : 'text-sm font-bold tabular' },
+          ],
+          heart('item', i.id, i.name),
+        );
+      }),
+    );
+    q('[data-vendors]').replaceChildren(
+      ...vendors.map((v) =>
+        row(
+          `/vendors/${v.slug}`,
+          thumb(v.cover_url, !v.is_open),
+          v.name,
+          [
+            { text: v.cuisines, cls: 'text-sm text-muted truncate' },
+            { text: v.status, cls: `text-[0.8125rem] font-bold ${v.is_open ? 'text-success' : 'text-muted'}` },
+          ],
+          heart('vendor', v.id, v.name),
+        ),
+      ),
+    );
+  }
+
+  // Re-draw when something is removed (the save buttons are handled site-wide)
+  // Guests see the sign-in card instead
+  if (document.documentElement.dataset.user === '1') onFavChange(() => render());
+</script>

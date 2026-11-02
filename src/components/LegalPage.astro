@@ -1,0 +1,52 @@
+---
+import Copyright from './Copyright.astro';
+// Shared frame for the Privacy Policy and Terms: back button, contents list, text.
+import AppLayout from '../layouts/AppLayout.astro';
+import PageHero from './PageHero.astro';
+import { SITE } from '../data/site';
+
+interface Props {
+  title: string;
+  sections: { id: string; title: string }[];
+  /** The card at the top */
+  icon: string;
+  heading: string;
+}
+const { title, sections, icon, heading } = Astro.props;
+
+// Came from a welcome screen? Go back there, without the app chrome.
+const from = Astro.url.searchParams.get('from');
+const back = from === 'welcome' ? '/welcome' : from === 'location' ? '/welcome/location' : '/account';
+const fromWelcome = from === 'welcome' || from === 'location';
+
+// Each section (a heading and its text) goes in its own card, numbered
+const html = await Astro.slots.render('default');
+const parts = html.split(/(?=<h2[\s>])/);
+// Text before the first heading is the intro (a page may not have one)
+const first = parts[0]!.trim();
+const intro = first && !first.startsWith('<h2') ? parts.shift()! : (first ? '' : (parts.shift(), ''));
+---
+
+<AppLayout title={title} mobileHeader="none" nav={!fromWelcome}>
+  <div class="container-app pt-[calc(var(--sat)+1rem)] md:pt-10">
+    <div class="max-w-[46rem] lg:ml-[17.5rem]">
+      <PageHero title={title} back={back} icon={icon} heading={heading} text={`Last updated ${SITE.legalUpdated}`} />
+    </div>
+  </div>
+  <div class="container-app pt-6 md:pt-8 pb-16 grid gap-10 lg:grid-cols-[15rem_minmax(0,1fr)]">
+    <nav aria-label="On this page" class="hidden lg:block">
+      <div class="sticky top-6 flex flex-col gap-1 text-sm">
+        <span class="font-bold text-ink mb-2">On this page</span>
+        {sections.map((s) => <a href={`#${s.id}`} class="text-muted no-underline hover:text-ink py-1">{s.title}</a>)}
+      </div>
+    </nav>
+    <article class="legal max-w-[46rem] flex flex-col gap-3">
+      {intro && <div class="legal-card legal-intro" set:html={intro} />}
+      {parts.map((part) => <section class="legal-card" set:html={part} />)}
+      <p class="mt-6 text-[0.8125rem] text-muted">
+        See also: <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms and Conditions</a> · <a href="/help">Help and support</a>
+      </p>
+      <Copyright show="app" class="mt-8 text-xs" />
+    </article>
+  </div>
+</AppLayout>

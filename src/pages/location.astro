@@ -1,0 +1,56 @@
+---
+import AppLayout from '../layouts/AppLayout.astro';
+import TopBar from '../components/TopBar.astro';
+import LocalityPicker from '../components/LocalityPicker.astro';
+import { getZones, tidyArea, validLocality } from '../data/store';
+import { getLocation, safeNext, setLocation } from '../lib/session';
+
+const zones = await getZones();
+const next = safeNext(Astro.url.searchParams.get('next'));
+const saved = getLocation(Astro.cookies);
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const zoneId = Number(form.get('zone_id'));
+  const landmark = String(form.get('landmark') ?? '').trim().slice(0, 120);
+  const details = String(form.get('details') ?? '').trim().slice(0, 120);
+  try {
+    if (!zones.some((z) => z.id === zoneId)) throw new Error('Choose your town.');
+    const localityId = await validLocality(zoneId, Number(form.get('locality_id')) || null);
+    const area = localityId ? '' : tidyArea(form.get('locality_other'));
+    if (form.get('locality_id') === '0' && !area) throw new Error('Type the name of your area.');
+    setLocation(Astro.cookies, { zoneId, localityId, area, landmark, details });
+    return Astro.redirect(next, 303);
+  } catch (e) {
+    error = (e as Error).message;
+  }
+}
+---
+
+<AppLayout title="Delivery area" mobileHeader="none" nav={false}>
+  <TopBar title="Where should we deliver?" back={next} />
+
+  <div class="container-app pt-4 pb-12">
+  <form method="post" class="max-w-xl flex flex-col gap-5">
+    {error && <p role="alert" data-form-error class="p-4 rounded-xl bg-danger-soft text-danger text-sm font-semibold">{error}</p>}
+
+    <LocalityPicker zones={zones} zoneId={saved?.zoneId} localityId={saved?.localityId ?? null} area={saved?.area} allowOther idPrefix="page" locate />
+
+    <div>
+      <label for="landmark" class="field-label">Landmark <span class="text-muted font-medium">(optional)</span></label>
+      <input id="landmark" name="landmark" class="field-input" value={saved?.landmark ?? ''} placeholder="For example, Hospital Junction" />
+      <p class="field-hint">Helps us show where you are. You can change it at checkout.</p>
+    </div>
+
+    <div>
+      <label for="details" class="field-label">House number or GhanaPost GPS <span class="text-muted font-medium">(optional)</span></label>
+      <input id="details" name="details" class="field-input" value={saved?.details ?? ''} placeholder="For example, CA-0123-4567" />
+    </div>
+
+    <p class="text-sm text-muted">We're in {zones.map((z) => z.name).join(', ')} for now. More towns across Ghana are coming soon.</p>
+
+    <button type="submit" class="btn btn-primary btn-lg w-full sm:w-auto sm:self-start">Save delivery area</button>
+  </form>
+  </div>
+</AppLayout>

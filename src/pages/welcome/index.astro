@@ -1,0 +1,200 @@
+---
+// First screen after the intro: the rider animation, then Google or email
+// sign-in (create an account from the line under it), browse as guest, and
+// the rider or restaurant sign-in.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Logo from '../../components/Logo.astro';
+import Icon from '../../components/Icon.astro';
+import Copyright from '../../components/Copyright.astro';
+import GoogleButton from '../../components/GoogleButton.astro';
+import { getLocation, getUser } from '../../lib/session';
+import { getZones } from '../../data/store';
+
+const next = getLocation(Astro.cookies) ? '/' : '/welcome/location';
+if (getUser(Astro.cookies)) return Astro.redirect(next);
+
+const zones = await getZones();
+const towns = zones.map((z) => z.name).join(', ').replace(/, ([^,]*)$/, ' and $1');
+---
+
+<BaseLayout title="Welcome" bare>
+  <div class="min-h-dvh flex flex-col bg-paper" data-motion="page">
+    <!-- Step 0: choose -->
+    <section data-step="choose" class="flex-1 flex flex-col">
+      <!-- A delivery rider on the way: rides in, then floats gently on a loop -->
+      <div class="welcome-hero welcome-art">
+        <div class="art-stage">
+          <img src="/images/welcome-rider.png" alt="A Relax&Bite rider on a scooter delivering food" width="479" height="396" loading="eager" decoding="async" />
+          <!-- moving extras: wind behind the box, dust from the back wheel, a ping from the map pin -->
+          <span class="art-wind" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="art-dust" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="art-ping" aria-hidden="true"><i></i><i></i></span>
+        </div>
+        <span class="absolute left-5 top-[max(1rem,var(--sat))]">
+          <Logo size="sm" />
+        </span>
+      </div>
+
+      <div class="flex-1 w-full max-w-md mx-auto px-5 pt-7 flex flex-col pb-[max(1.25rem,var(--sab))]">
+        <h1 class="text-[1.875rem] leading-[1.15] font-extrabold tracking-tight">Good food,<br />right to your door</h1>
+        <p class="mt-2.5 text-muted leading-relaxed">Order from restaurants and chop bars in {towns}.</p>
+
+        <!-- Sign-in options: Google first (one tap), then email. New people
+             create an account from the line under it; guests can skip. -->
+        <div class="mt-7 flex flex-col gap-3">
+          <p data-google-error role="alert" hidden class="p-3 rounded-lg bg-danger-soft text-danger text-sm font-semibold"></p>
+          <GoogleButton next={next} />
+          <button type="button" data-start-email="signin" class="btn btn-primary btn-lg w-full">
+            <Icon name="mail" size={19} /> Continue with email
+          </button>
+          <p class="text-center text-[0.9375rem] text-muted mt-1">
+            New to Relax&amp;Bite?
+            <button type="button" data-start-email="signup" class="font-bold text-brand">Create an account</button>
+          </p>
+        </div>
+
+        <a href={next} data-skip class="mt-3 self-center text-sm font-semibold text-ink-soft no-underline hover:text-ink py-2 px-3">Browse as guest</a>
+
+        <!-- Partners: one quiet row instead of two big buttons -->
+        <a href="/partner/login" class="mt-4 flex items-center gap-3.5 py-3.5 border-y border-line no-underline text-ink group">
+          <span class="flex -space-x-2 shrink-0" aria-hidden="true">
+            <span class="size-9 rounded-full bg-brand-soft text-brand flex items-center justify-center ring-2 ring-paper"><Icon name="store" size={18} /></span>
+            <span class="size-9 rounded-full bg-brand-soft text-brand flex items-center justify-center ring-2 ring-paper"><Icon name="bike" size={18} /></span>
+          </span>
+          <span class="flex-1 min-w-0">
+            <span class="block text-[0.9375rem] font-bold">Restaurant or rider?</span>
+            <span class="block text-sm text-muted">Sign in, or sign up as a partner</span>
+          </span>
+          <Icon name="chevron-right" size={20} class="text-faint shrink-0 transition-transform group-hover:translate-x-0.5" />
+        </a>
+
+        <div class="mt-auto pt-5 flex flex-col gap-2 text-center">
+          <p class="text-xs text-muted leading-relaxed">
+            By continuing you agree to our <a href="/terms?from=welcome" class="font-semibold text-ink underline underline-offset-2">Terms</a>{' and '}<a href="/privacy?from=welcome" class="font-semibold text-ink underline underline-offset-2">Privacy Policy</a>.
+          </p>
+          <Copyright class="text-xs" show="always" />
+        </div>
+      </div>
+    </section>
+
+    <div data-steps hidden class="flex-1 w-full max-w-md mx-auto px-5 pt-[max(1rem,var(--sat))] flex flex-col pb-[max(1.5rem,var(--sab))]">
+      <!-- Step 1: email -->
+      <form data-step="email" class="flex flex-col gap-5 flex-1" novalidate>
+        <button type="button" data-back-choose class="back-link self-start" aria-label="Back">
+          <Icon name="chevron-left" size={20} strokeWidth={2.2} />
+        </button>
+        <div class="seg" role="tablist" aria-label="Sign in or sign up">
+          <button type="button" role="tab" data-mode-tab="signin" aria-selected="true">Sign in</button>
+          <button type="button" role="tab" data-mode-tab="signup" aria-selected="false">Sign up</button>
+        </div>
+        <div>
+          <h1 data-auth-heading class="text-[1.75rem] leading-tight font-extrabold tracking-tight">Welcome back</h1>
+          <p class="text-muted mt-2">We'll email you a 6-digit code. No password needed.</p>
+        </div>
+
+        <div data-name-field hidden>
+          <label for="w-name" class="field-label">Your name</label>
+          <input id="w-name" name="name" type="text" autocomplete="name" maxlength="80" placeholder="Ama Mensah" class="field-input text-lg" />
+        </div>
+        <div>
+          <label for="w-email" class="field-label">Email address</label>
+          <input id="w-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" required placeholder="you@example.com" class="field-input text-lg" />
+          <p data-error role="alert" hidden class="text-sm font-semibold text-danger mt-1.5"></p>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg w-full">Sign in</button>
+
+        <p class="mt-auto pt-6 text-[0.8125rem] text-muted leading-relaxed text-center">
+          If you sign up, our <a href="/terms?from=welcome" class="font-semibold text-ink underline underline-offset-2">Terms and Conditions</a>{' and '}<a href="/privacy?from=welcome" class="font-semibold text-ink underline underline-offset-2">Privacy Policy</a> apply.
+        </p>
+      </form>
+
+      <!-- Step 2: code -->
+      <form data-step="code" hidden class="flex flex-col gap-5 flex-1" novalidate>
+        <button type="button" data-change class="back-link self-start" aria-label="Back to email">
+          <Icon name="chevron-left" size={20} strokeWidth={2.2} />
+        </button>
+        <div>
+          <h1 class="text-[1.75rem] leading-tight font-extrabold tracking-tight">Enter the code</h1>
+          <p data-existing-note hidden class="mt-2 p-3 rounded-lg bg-brand-tint text-sm text-ink-soft">You already have an account with this email, so we'll sign you in.</p>
+          <p class="text-muted mt-2">
+            We emailed a 6-digit code to <strong class="text-ink break-all" data-email-label></strong>. Check your spam folder if it isn't there.
+          </p>
+        </div>
+
+        <div>
+          <label for="w-code" class="field-label">6-digit code</label>
+          <input
+            id="w-code"
+            name="code"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="6"
+            required
+            class="field-input text-center text-2xl font-bold tracking-[0.5em] tabular"
+          />
+          <p data-error role="alert" hidden class="text-sm font-semibold text-danger mt-1.5"></p>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg w-full">Verify and continue</button>
+
+        <p class="text-sm text-muted text-center">
+          Didn't get it?
+          <button type="button" data-resend class="font-bold text-brand disabled:text-faint" disabled>Resend code</button>
+          <span data-resend-timer class="tabular"></span>
+        </p>
+
+        <p data-test-code hidden class="p-3 rounded-lg bg-warning-soft text-warning-ink text-[0.8125rem]"></p>
+      </form>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  import { markOnboarded } from '../../lib/onboarding';
+  import { bindEmailSignIn, bindGoogleButtons, googleProblem } from '../../lib/email-signin';
+
+  const choose = document.querySelector<HTMLElement>('[data-step="choose"]')!;
+  const stepsBox = document.querySelector<HTMLElement>('[data-steps]')!;
+  const emailForm = document.querySelector<HTMLFormElement>('form[data-step="email"]')!;
+  const codeForm = document.querySelector<HTMLFormElement>('form[data-step="code"]')!;
+  const skip = document.querySelector<HTMLAnchorElement>('[data-skip]')!;
+  const next = skip.getAttribute('href') || '/welcome/location';
+
+  const flow = bindEmailSignIn({
+    emailForm,
+    codeForm,
+    onSignedIn: () => {
+      if (next === '/') markOnboarded();
+      window.location.replace(next);
+    },
+  });
+  bindGoogleButtons(document, () => next);
+
+  const problem = googleProblem();
+  const googleError = document.querySelector<HTMLElement>('[data-google-error]')!;
+  googleError.textContent = problem;
+  googleError.hidden = !problem;
+
+  // "Create an account" / "Sign in" open the email step on that tab; the back arrow returns
+  document.querySelectorAll<HTMLButtonElement>('[data-start-email]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.startEmail === 'signup' ? 'signup' : 'signin';
+      flow.setMode(mode);
+      choose.hidden = true;
+      stepsBox.hidden = false;
+      window.scrollTo(0, 0);
+      emailForm.querySelector<HTMLInputElement>(mode === 'signup' ? '#w-name' : '#w-email')!.focus();
+    }),
+  );
+  document.querySelector('[data-back-choose]')!.addEventListener('click', () => {
+    flow.reset();
+    stepsBox.hidden = true;
+    choose.hidden = false;
+  });
+
+  // Skipping still counts as having seen this screen
+  skip.addEventListener('click', () => {
+    if (next === '/') markOnboarded();
+  });
+</script>

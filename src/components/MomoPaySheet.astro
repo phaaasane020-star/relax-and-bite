@@ -1,0 +1,180 @@
+---
+// Pay with Mobile Money without leaving the app: choose the network, check the
+// number, and approve the prompt on your phone. This sheet keeps checking
+// until the payment comes through.
+import Icon from './Icon.astro';
+import type { Order } from '../data/types';
+import { money, phoneNetwork } from '../lib/format';
+
+interface Props {
+  order: Order;
+  /** Open by itself (straight after checkout) */
+  open?: boolean;
+}
+const { order, open = false } = Astro.props;
+const n = phoneNetwork(order.customer_phone);
+const network = n === 'Telecel' ? 'telecel' : n === 'AirtelTigo' ? 'airteltigo' : 'mtn';
+const networks = [
+  { key: 'mtn', label: 'MTN', tip: 'Dial *170#, choose My Wallet, then My Approvals, and approve the payment.' },
+  { key: 'telecel', label: 'Telecel', tip: 'Open your Telecel Cash menu and look for a payment waiting for approval.' },
+  { key: 'airteltigo', label: 'AirtelTigo', tip: 'Open your AirtelTigo Money menu and look for a payment waiting for approval.' },
+];
+---
+
+<dialog id="momo-sheet" class="sheet" aria-labelledby="momo-title" data-momo-sheet data-code={order.code} data-open-now={open ? '1' : undefined} data-tips={JSON.stringify(Object.fromEntries(networks.map((x) => [x.key, x.tip])))}>
+  <!-- 1. Number and network -->
+  <form class="p-5 sm:p-6 pt-7 flex flex-col gap-4" data-step="form" novalidate>
+    <div class="flex items-center justify-between gap-3">
+      <h2 id="momo-title" class="text-xl font-extrabold tracking-tight">Pay with MoMo</h2>
+      <button type="button" data-close class="icon-btn icon-btn-round border-0 -mr-2 text-muted" aria-label="Close"><Icon name="x" size={20} /></button>
+    </div>
+    <p class="text-muted -mt-2">Total <strong class="text-ink text-lg tabular">{money(order.total)}</strong></p>
+    <fieldset>
+      <legend class="field-label">Network</legend>
+      <div class="grid grid-cols-3 gap-2">
+        {networks.map((x) => (
+          <label class="co-pay !min-h-12">
+            <input type="radio" name="network" value={x.key} checked={x.key === network} class="sr-only" />
+            <span class="text-sm font-bold">{x.label}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+    <div>
+      <label for="momo-phone" class="field-label">MoMo number</label>
+      <input id="momo-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" class="field-input field-lg text-lg tabular" value={order.customer_phone} required />
+    </div>
+    <p class="rounded-2xl bg-brand-tint text-ink-soft text-sm px-4 py-3">A prompt will pop up on this phone. Enter your MoMo PIN to approve it, then keep this screen open while we confirm.</p>
+    <p data-error role="alert" class="text-sm font-semibold text-danger" hidden></p>
+    <button type="submit" class="btn btn-primary btn-lg w-full rounded-2xl" data-send>
+      <Icon name="phone" size={19} /> Pay {money(order.total)}
+    </button>
+  </form>
+
+  <!-- 2. Sending / waiting for approval -->
+  <div class="p-5 sm:p-6 pt-8 flex flex-col items-center text-center gap-3" data-step="wait" hidden>
+    <span class="momo-spinner" aria-hidden="true"></span>
+    <h2 class="text-xl font-extrabold tracking-tight mt-2" data-wait-title>Sending the prompt…</h2>
+    <p class="text-muted max-w-sm" data-wait-text>This takes a few seconds.</p>
+    <div class="w-full rounded-2xl bg-brand-tint text-left px-4 py-3.5 mt-1" data-tips hidden>
+      <p class="font-bold">Not seeing the prompt?</p>
+      <p class="text-sm mt-0.5" data-tip-text></p>
+    </div>
+    <div class="w-full grid grid-cols-2 gap-2 mt-2">
+      <button type="button" class="btn btn-lg bg-brand-tint text-brand-ink border-0" data-check><Icon name="refresh" size={18} /> Check now</button>
+      <button type="button" class="btn btn-lg bg-fill text-ink border-0" data-close>Close</button>
+    </div>
+  </div>
+
+  <!-- 3. Code from an SMS (some Telecel payments) -->
+  <form class="p-5 sm:p-6 pt-7 flex flex-col gap-4" data-step="otp" hidden novalidate>
+    <h2 class="text-xl font-extrabold tracking-tight">Enter the code</h2>
+    <p class="text-muted -mt-2" data-otp-text>Enter the code sent to your phone by SMS.</p>
+    <input name="otp" inputmode="numeric" autocomplete="one-time-code" class="field-input field-lg text-center text-2xl font-extrabold tracking-[0.3em]" maxlength="12" required />
+    <p data-error role="alert" class="text-sm font-semibold text-danger" hidden></p>
+    <button type="submit" class="btn btn-primary btn-lg w-full rounded-2xl">Confirm</button>
+  </form>
+
+  <!-- 4. Paid -->
+  <div class="p-5 sm:p-6 pt-8 flex flex-col items-center text-center gap-3" data-step="paid" hidden>
+    <span class="size-20 rounded-[1.5rem] bg-brand text-on-brand flex items-center justify-center pending-badge"><Icon name="check" size={40} strokeWidth={2.6} /></span>
+    <h2 class="text-xl font-extrabold tracking-tight mt-2">Payment received</h2>
+    <p class="text-muted">Your order is on its way to the kitchen.</p>
+  </div>
+</dialog>
+
+<script>
+  const sheet = document.querySelector<HTMLDialogElement>('[data-momo-sheet]');
+  if (sheet) {
+    const code = sheet.dataset.code!;
+    const tipFor = JSON.parse(sheet.dataset.tips || '{}') as Record<string, string>;
+    const steps = sheet.querySelectorAll<HTMLElement>('[data-step]');
+    const show = (name: string) => steps.forEach((s) => (s.hidden = s.dataset.step !== name));
+    const form = sheet.querySelector<HTMLFormElement>('[data-step="form"]')!;
+    const otpForm = sheet.querySelector<HTMLFormElement>('[data-step="otp"]')!;
+    const waitTitle = sheet.querySelector<HTMLElement>('[data-wait-title]')!;
+    const waitText = sheet.querySelector<HTMLElement>('[data-wait-text]')!;
+    const tips = sheet.querySelector<HTMLElement>('[data-tips]')!;
+    let timer = 0;
+
+    type Reply = { state?: 'approve' | 'otp' | 'paid' | 'failed'; message?: string; error?: string };
+    const call = async (body: object): Promise<Reply> => {
+      try {
+        const res = await fetch('/api/pay/momo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, ...body }) });
+        return (await res.json().catch(() => ({}))) as Reply;
+      } catch {
+        return { error: 'No connection. Check your internet and try again.' };
+      }
+    };
+    const fail = (where: HTMLFormElement, message: string) => {
+      window.clearInterval(timer);
+      show(where === otpForm ? 'otp' : 'form');
+      const box = where.querySelector<HTMLElement>('[data-error]')!;
+      box.textContent = message;
+      box.hidden = false;
+    };
+    const handle = (r: Reply, from: HTMLFormElement) => {
+      if (r.error) return fail(from, r.error);
+      if (r.state === 'paid') {
+        window.clearInterval(timer);
+        show('paid');
+        window.setTimeout(() => window.location.replace(`/orders/${code}?placed=1`), 1200);
+      } else if (r.state === 'otp') {
+        window.clearInterval(timer);
+        show('otp');
+        otpForm.querySelector<HTMLElement>('[data-otp-text]')!.textContent = r.message || 'Enter the code sent to your phone by SMS.';
+        otpForm.querySelector<HTMLInputElement>('input[name="otp"]')!.focus();
+      } else if (r.state === 'failed') {
+        fail(form, r.message || "The payment didn't go through. Try again.");
+      } else {
+        waiting();
+      }
+    };
+    const waiting = () => {
+      show('wait');
+      waitTitle.textContent = 'Waiting for your approval';
+      waitText.textContent = 'Approve the prompt on your phone. We confirm it by ourselves, or tap Check now.';
+      const net = (form.querySelector<HTMLInputElement>('input[name="network"]:checked')?.value ?? 'mtn');
+      sheet.querySelector('[data-tip-text]')!.textContent = tipFor[net] ?? '';
+      tips.hidden = false;
+      window.clearInterval(timer);
+      timer = window.setInterval(async () => {
+        if (!sheet.open || document.visibilityState !== 'visible') return;
+        const r = await call({ step: 'status' });
+        if (r.state === 'paid' || r.state === 'failed') handle(r, form);
+      }, 4000);
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      form.querySelector<HTMLElement>('[data-error]')!.hidden = true;
+      show('wait');
+      waitTitle.textContent = 'Sending the prompt…';
+      waitText.textContent = 'This takes a few seconds.';
+      tips.hidden = true;
+      const data = new FormData(form);
+      handle(await call({ step: 'start', phone: data.get('phone'), network: data.get('network') }), form);
+    });
+    otpForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      show('wait');
+      waitTitle.textContent = 'Checking the code…';
+      tips.hidden = true;
+      handle(await call({ step: 'otp', otp: new FormData(otpForm).get('otp') }), otpForm);
+    });
+    sheet.querySelector('[data-check]')!.addEventListener('click', async (e) => {
+      const btn = e.currentTarget as HTMLButtonElement;
+      btn.disabled = true;
+      const r = await call({ step: 'status' });
+      btn.disabled = false;
+      if (r.state === 'paid' || r.state === 'failed' || r.error) handle(r, form);
+      else waitText.textContent = "Not confirmed yet. Approve the prompt, then we'll pick it up.";
+    });
+    sheet.addEventListener('close', () => {
+      window.clearInterval(timer);
+      show('form');
+    });
+    document.querySelectorAll('[data-momo-open]').forEach((b) => b.addEventListener('click', () => sheet.showModal()));
+    if (sheet.dataset.openNow) sheet.showModal();
+  }
+</script>

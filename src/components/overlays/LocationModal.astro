@@ -1,0 +1,183 @@
+---
+// "Choose delivery location": a landmark, "Use current location", and the
+// towns as tiles. Tapping a town (or being found inside one) saves it.
+import Icon from '../Icon.astro';
+import TownChoice from '../TownChoice.astro';
+import { getZones } from '../../data/store';
+import { getLocation } from '../../lib/session';
+
+const zones = await getZones();
+const saved = getLocation(Astro.cookies);
+const towns = JSON.stringify(zones.map((z) => ({ id: z.id, name: z.name, lat: z.lat, lng: z.lng, radius_km: z.radius_km }))).replace(/</g, '\\u003c');
+---
+
+<dialog id="location-modal" class="sheet" aria-labelledby="location-title">
+  <form class="relative p-5 sm:p-7 flex flex-col gap-4" novalidate>
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h2 id="location-title" class="text-xl font-extrabold tracking-tight">Choose delivery location</h2>
+        <p class="text-sm text-muted mt-1">Pick your town, or use your current position.</p>
+      </div>
+      <button type="button" data-close class="icon-btn icon-btn-round border-0 bg-fill shrink-0 -mr-1" aria-label="Close">
+        <Icon name="x" size={20} />
+      </button>
+    </div>
+
+    <label class="flex items-center gap-2.5 h-12 px-4 rounded-xl bg-fill text-muted">
+      <Icon name="pin" size={19} class="shrink-0" />
+      <span class="sr-only">Street, area or landmark</span>
+      <input
+        name="landmark"
+        value={saved?.landmark ?? ''}
+        maxlength="120"
+        autocomplete="address-line1"
+        placeholder="Street, area or landmark (optional)"
+        class="w-full border-0 bg-transparent p-0 text-[0.9375rem] text-ink placeholder:text-faint focus:ring-0"
+      />
+    </label>
+
+    <button type="button" data-locate class="flex items-center gap-3 p-3.5 rounded-xl bg-brand-tint border border-brand-soft text-left">
+      <span class="size-10 rounded-full bg-brand text-on-brand flex items-center justify-center shrink-0">
+        <Icon name="crosshair" size={20} />
+      </span>
+      <span class="flex flex-col min-w-0">
+        <span class="font-bold text-ink" data-locate-label>Use current location</span>
+        <span class="text-sm text-muted">Finds your town from your phone's GPS</span>
+      </span>
+    </button>
+    <p data-locate-msg role="status" aria-live="polite" hidden class="text-sm p-3 rounded-lg"></p>
+
+    <div class="flex flex-col gap-2.5">
+      <h3 class="text-sm font-bold">Relax&amp;Bite towns</h3>
+      <TownChoice zones={zones} zoneId={saved?.zoneId} />
+    </div>
+
+    <p data-error role="alert" hidden class="text-sm font-semibold text-danger"></p>
+    <button type="submit" class="btn btn-primary btn-lg w-full">Save</button>
+    <script type="application/json" data-towns set:html={towns}></script>
+  </form>
+</dialog>
+
+<script>
+  import { locate, type TownArea } from '../../lib/geo';
+  import { townIn } from '../../lib/ghana-towns';
+  import { confirmAction } from '../../lib/confirm';
+
+  const modal = document.getElementById('location-modal') as HTMLDialogElement;
+  const form = modal.querySelector('form')!;
+  const error = form.querySelector<HTMLElement>('[data-error]')!;
+  const msg = form.querySelector<HTMLElement>('[data-locate-msg]')!;
+  const towns = JSON.parse(form.querySelector('[data-towns]')!.textContent || '[]') as TownArea[];
+  const townList = towns.map((t) => t.name).join(', ').replace(/, ([^,]*)$/, ' and $1');
+  const saveBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const landmark = form.elements.namedItem('landmark') as HTMLInputElement;
+  const ours = (name: string) => towns.find((t) => t.name.toLowerCase() === name.toLowerCase());
+
+  // A town we don't deliver to: say so in a prompt
+  const notHere = (place: string, extra = '') =>
+    confirmAction({
+      title: `We don't deliver to ${place} yet`,
+      message: `${extra}Relax&Bite delivers in ${townList} for now. Choose one of these towns, or check back soon. We're adding more towns.`,
+      confirmLabel: 'OK',
+      alertOnly: true,
+    });
+
+  // What they type: our town picks its tile; another town gets the prompt (once per town)
+  let warned = '';
+  const checkTyped = async (): Promise<boolean> => {
+    const named = townIn(landmark.value, towns.map((t) => t.name));
+    if (!named) return true;
+    const town = ours(named);
+    if (town) {
+      const radio = form.querySelector<HTMLInputElement>(`[name="zone_id"][value="${town.id}"]`);
+      if (radio && !form.querySelector('[name="zone_id"]:checked')) radio.checked = true;
+      return true;
+    }
+    if (warned !== named) {
+      warned = named;
+      await notHere(named);
+    }
+    return false;
+  };
+  let typing = 0;
+  landmark.addEventListener('input', () => {
+    window.clearTimeout(typing);
+    typing = window.setTimeout(checkTyped, 900);
+  });
+
+  const save = async () => {
+    window.clearTimeout(typing);
+    const named = townIn(landmark.value, towns.map((t) => t.name));
+    if (named && !ours(named)) {
+      warned = named;
+      await notHere(named);
+      landmark.focus();
+      return;
+    }
+    const zone = form.querySelector<HTMLInputElement>('[name="zone_id"]:checked');
+    if (!zone) {
+      error.textContent = 'Choose your town.';
+      error.hidden = false;
+      return;
+    }
+    error.hidden = true;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    const res = await fetch('/api/location', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        zoneId: Number(zone.value),
+        localityId: null,
+        landmark: landmark.value,
+      }),
+    }).catch(() => null);
+    if (res?.ok) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('area');
+      url.searchParams.delete('locality');
+      window.location.replace(url.toString());
+    } else {
+      const data = res ? ((await res.json().catch(() => ({}))) as { error?: string }) : {};
+      error.textContent = data.error || 'Could not save. Check your connection and try again.';
+      error.hidden = false;
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+    }
+  };
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    save();
+  });
+  // Tapping a town saves it straight away
+  form.querySelectorAll<HTMLInputElement>('[name="zone_id"]').forEach((r) => r.addEventListener('change', save));
+
+  // "Use current location": find the town from GPS and save it
+  const locateBtn = form.querySelector<HTMLButtonElement>('[data-locate]')!;
+  const locateLabel = locateBtn.querySelector<HTMLElement>('[data-locate-label]')!;
+  const say = (tone: 'warn' | 'info', text: string) => {
+    msg.className = `text-sm p-3 rounded-lg ${tone === 'warn' ? 'bg-warning-soft text-warning-ink' : 'bg-fill text-ink-soft'}`;
+    msg.textContent = text;
+    msg.hidden = false;
+  };
+  locateBtn.addEventListener('click', async () => {
+    locateBtn.disabled = true;
+    locateLabel.textContent = 'Finding you…';
+    const result = await locate(towns);
+    locateBtn.disabled = false;
+    locateLabel.textContent = 'Use current location';
+    if (!result.ok) return say('info', result.reason.replace('below', 'here'));
+    if (result.inside) {
+      const radio = form.querySelector<HTMLInputElement>(`[name="zone_id"][value="${result.inside.id}"]`);
+      if (radio) {
+        radio.checked = true;
+        save();
+      }
+      return;
+    }
+    const km = result.km !== null ? Math.round(result.km) : null;
+    const where = result.nearest && km !== null ? `You're about ${km} km from ${result.nearest.name}. ` : '';
+    await notHere('where you are', `${where}You can still pick one of our towns to order for someone there. `);
+  });
+</script>

@@ -1,0 +1,178 @@
+---
+// "Your account" in the panels: the name on the account, the email for order alerts, and the password.
+import Alert from './Alert.astro';
+import Copyright from '../Copyright.astro';
+import Icon from '../Icon.astro';
+import type { PartnerAccount } from '../../data/types';
+import { prettyPhone } from '../../lib/format';
+import { pushReady } from '../../data/push';
+import { vapidPublicKey } from '../../lib/webpush';
+
+interface Props {
+  account: PartnerAccount;
+  error?: string;
+  success?: string;
+}
+const { account, error, success } = Astro.props;
+const push = pushReady();
+const roleLabel = ({ admin: 'Admin', vendor: 'Vendor', rider: 'Rider' } as Record<string, string>)[account.role];
+const initials = account.full_name
+  .split(' ')
+  .filter(Boolean)
+  .slice(0, 2)
+  .map((w) => w[0]!.toUpperCase())
+  .join('');
+---
+
+<div class="max-w-xl">
+  <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Your account</h1>
+  <p class="text-sm text-muted mt-1">{account.role === 'admin' ? 'Change the name on your account and your password.' : 'Your name, the email for order alerts, and your password.'}</p>
+
+  <div class="mt-5">
+    <Alert error={error} success={success} />
+  </div>
+
+  <section class="card p-4 sm:p-5 flex items-center gap-4">
+    <span class="size-14 rounded-full bg-fill text-ink flex items-center justify-center text-lg font-extrabold shrink-0">{initials || '?'}</span>
+    <div class="min-w-0">
+      <p class="font-extrabold text-lg truncate">{account.full_name}</p>
+      <p class="text-sm text-muted">
+        {roleLabel} · <span class="tabular">{prettyPhone(account.phone)}</span>
+      </p>
+    </div>
+  </section>
+
+  <form method="post" class="card p-4 sm:p-5 mt-4 flex flex-col gap-4">
+    <input type="hidden" name="action" value="name" />
+    <h2 class="font-extrabold flex items-center gap-2"><Icon name="user" size={20} class="text-muted" /> Your name</h2>
+    <div>
+      <label for="acc-name" class="field-label">Name shown on your account</label>
+      <input id="acc-name" name="full_name" class="field-input" value={account.full_name} minlength="3" maxlength="60" autocomplete="name" required />
+      <p class="field-hint">This is the name in the panel and in the activity log.</p>
+    </div>
+    <button type="submit" class="btn btn-primary self-start">Save name</button>
+  </form>
+
+  <section class="card p-4 sm:p-5 mt-4 flex flex-col gap-3" data-push-settings data-web-key={push.web ? vapidPublicKey() : ''} data-app-ready={push.app ? '1' : undefined}>
+    <h2 class="font-extrabold flex items-center gap-2"><Icon name="bell" size={20} class="text-muted" /> Notifications on this device</h2>
+    <p class="text-sm text-muted" data-ps-text>Checking…</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button" data-ps-on hidden class="btn btn-primary">Allow notifications</button>
+      <button type="button" data-ps-test hidden class="btn btn-secondary">Send a test</button>
+      <button type="button" data-ps-off hidden class="btn btn-ghost text-danger">Turn off here</button>
+    </div>
+  </section>
+
+  {account.role !== 'admin' && (
+    <form method="post" class="card p-4 sm:p-5 mt-4 flex flex-col gap-4">
+      <input type="hidden" name="action" value="email" />
+      <h2 class="font-extrabold flex items-center gap-2"><Icon name="mail" size={20} class="text-muted" /> Order alerts by email</h2>
+      <div>
+        <label for="acc-email" class="field-label">Email address</label>
+        <input id="acc-email" name="email" type="email" inputmode="email" class="field-input" value={account.email ?? ''} autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com" maxlength="254" />
+        <p class="field-hint">
+          {account.role === 'vendor'
+            ? 'We email you the moment a new order comes in.'
+            : "We email you when there's a delivery in your area while you're online, and when food is ready for pickup."}{' '}
+          Leave it empty to stop the emails.
+        </p>
+      </div>
+      <button type="submit" class="btn btn-primary self-start">Save email</button>
+    </form>
+  )}
+
+  <form method="post" class="card p-4 sm:p-5 mt-4 flex flex-col gap-4" data-password-form>
+    <input type="hidden" name="action" value="password" />
+    <h2 class="font-extrabold flex items-center gap-2"><Icon name="lock" size={20} class="text-muted" /> Change password</h2>
+    <div>
+      <label for="acc-current" class="field-label">Current password</label>
+      <input id="acc-current" name="current_password" type="password" class="field-input" autocomplete="current-password" required />
+    </div>
+    <div>
+      <label for="acc-new" class="field-label">New password</label>
+      <input id="acc-new" name="new_password" type="password" class="field-input" autocomplete="new-password" minlength="8" required />
+      <p class="field-hint">At least 8 characters. Mixing words, numbers and symbols makes it stronger.</p>
+    </div>
+    <div>
+      <label for="acc-confirm" class="field-label">Type the new password again</label>
+      <input id="acc-confirm" name="confirm_password" type="password" class="field-input" autocomplete="new-password" minlength="8" required data-match="new_password" />
+      <p data-match-error role="alert" hidden class="text-sm font-semibold text-danger mt-1.5">The two new passwords are not the same.</p>
+    </div>
+    <p class="text-sm text-muted">Changing your password signs out any other phone or computer using this account.</p>
+    <button type="submit" class="btn btn-primary self-start">Change password</button>
+  </form>
+  <Copyright show="app" version class="mt-8 text-xs" />
+</div>
+
+<script>
+  import { pushState, sendTestPush, turnOffPush, turnOnPush, type PushState } from '../../lib/push-client';
+
+  const ps = document.querySelector<HTMLElement>('[data-push-settings]');
+  if (ps) {
+    const opts = { webKey: ps.dataset.webKey ?? '', appReady: ps.hasAttribute('data-app-ready') };
+    const text = ps.querySelector<HTMLElement>('[data-ps-text]')!;
+    const on = ps.querySelector<HTMLButtonElement>('[data-ps-on]')!;
+    const test = ps.querySelector<HTMLButtonElement>('[data-ps-test]')!;
+    const off = ps.querySelector<HTMLButtonElement>('[data-ps-off]')!;
+    const inApp = document.documentElement.classList.contains('in-app');
+    const show = (state: PushState) => {
+      on.hidden = state !== 'off';
+      test.hidden = off.hidden = state !== 'on';
+      if (inApp) off.hidden = true; // in the app, turned off in the phone's settings
+      text.textContent = {
+        on: "On. You'll get a notification for new orders on this device.",
+        off: "Off. Allow notifications so you don't miss new orders.",
+        blocked: inApp
+          ? 'Blocked. Open your phone Settings > Apps > RelaxBite > Notifications, and turn them on.'
+          : 'Blocked in this browser. Tap the lock or settings icon next to the web address, choose Notifications, then Allow.',
+        unsupported: opts.webKey || opts.appReady ? "This browser can't show notifications. Try Chrome." : "Notifications aren't set up yet.",
+        'old-app': 'This version of the app cannot show notifications. Update the RelaxBite app.',
+      }[state];
+    };
+    pushState(opts).then(show).catch(() => show('unsupported'));
+    on.addEventListener('click', async () => {
+      on.disabled = true;
+      try {
+        show(await turnOnPush({ ...opts, ask: true }));
+      } catch {
+        text.textContent = "Couldn't turn notifications on. Try again.";
+      }
+      on.disabled = false;
+    });
+    test.addEventListener('click', async () => {
+      test.disabled = true;
+      try {
+        const n = await sendTestPush();
+        text.textContent = n ? 'Test sent. It should appear in a moment.' : "Nothing was sent. Turn notifications off and on again here.";
+      } catch (e) {
+        text.textContent = (e as Error).message;
+      }
+      test.disabled = false;
+    });
+    off.addEventListener('click', async () => {
+      await turnOffPush();
+      show('off');
+    });
+  }
+
+  const form = document.querySelector<HTMLFormElement>('[data-password-form]');
+  if (form) {
+    const next = form.querySelector<HTMLInputElement>('#acc-new')!;
+    const again = form.querySelector<HTMLInputElement>('#acc-confirm')!;
+    const mismatch = form.querySelector<HTMLElement>('[data-match-error]')!;
+    const check = () => {
+      const bad = again.value.length > 0 && again.value !== next.value;
+      mismatch.hidden = !bad;
+      again.toggleAttribute('aria-invalid', bad);
+      return !bad;
+    };
+    again.addEventListener('input', check);
+    next.addEventListener('input', () => again.value && check());
+    form.addEventListener('submit', (e) => {
+      if (!check()) {
+        e.preventDefault();
+        again.focus();
+      }
+    });
+  }
+</script>

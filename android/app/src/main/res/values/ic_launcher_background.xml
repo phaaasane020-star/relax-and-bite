@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Relax&Bite red, behind the R&B on the app icon -->
+    <color name="ic_launcher_background">#EF4444</color>
+</resources>

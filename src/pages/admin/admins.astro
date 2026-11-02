@@ -1,0 +1,137 @@
+---
+// The people who run Relax&Bite: add another admin, or switch one off.
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Alert from '../../components/panel/Alert.astro';
+import PartnerTabs from '../../components/panel/PartnerTabs.astro';
+import ReasonDialog from '../../components/panel/ReasonDialog.astro';
+import PartnerCreated from '../../components/panel/PartnerCreated.astro';
+import { addAdmin, listAdmins, setAdminActive } from '../../data/partners';
+import { audit } from '../../data/store';
+import { field, flash, takeFlash } from '../../lib/actions';
+import { clientInfo } from '../../lib/client-info';
+import { dateTime, prettyPhone } from '../../lib/format';
+
+const me = Astro.locals.partner!;
+const who = `${me.full_name} (admin)`;
+let error = '';
+let created: { name: string; phone: string; password: string } | null = null;
+let v = { full_name: '', phone: '' };
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = field(form, 'action');
+  try {
+    if (action === 'add') {
+      v = { full_name: field(form, 'full_name', 80), phone: field(form, 'phone', 20) };
+      const { account, password } = await addAdmin(v);
+      await audit(who, `Added ${account.full_name} (${prettyPhone(account.phone)}) as an admin`, { kind: 'admin', severity: 'warning', ...clientInfo(Astro) });
+      created = { name: account.full_name, phone: account.phone, password };
+    } else if (action === 'suspend') {
+      const a = await setAdminActive(field(form, 'id'), false, me.id, field(form, 'reason'));
+      await audit(who, `Switched off the admin ${a.full_name}: ${field(form, 'reason')}`, { kind: 'admin', severity: 'warning', ...clientInfo(Astro) });
+      flash(Astro.cookies, `${a.full_name} can no longer sign in.`);
+      return Astro.redirect('/admin/admins', 303);
+    } else if (action === 'reactivate') {
+      const a = await setAdminActive(field(form, 'id'), true, me.id);
+      await audit(who, `Switched the admin ${a.full_name} back on`, { kind: 'admin', ...clientInfo(Astro) });
+      flash(Astro.cookies, `${a.full_name} can sign in again.`);
+      return Astro.redirect('/admin/admins', 303);
+    }
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const admins = await listAdmins();
+const success = takeFlash(Astro.cookies);
+const showAdd = !created && (Astro.url.searchParams.get('add') === '1' || (Astro.request.method === 'POST' && !!error && v.phone !== ''));
+---
+
+<PanelLayout title="Admins">
+  <Alert error={error} success={success} />
+  <PartnerTabs />
+
+  {
+    created && (
+      <div class="mt-6">
+        <PartnerCreated role="admin" name={created.name} phone={created.phone} password={created.password} doneHref="/admin/admins" againHref="/admin/admins?add=1" />
+      </div>
+    )
+  }
+
+  {
+    showAdd && (
+      <form method="post" class="card p-5 md:p-6 mt-6 max-w-xl flex flex-col gap-4 settle-slow" aria-labelledby="add-admin-h">
+        <input type="hidden" name="action" value="add" />
+        <div>
+          <h2 id="add-admin-h" class="text-lg font-extrabold">Add an admin</h2>
+          <p class="text-sm text-muted mt-1">Admins can see every order, approve partners, change delivery areas and add other admins. Only add people you trust.</p>
+        </div>
+        <div>
+          <label for="admin-name" class="field-label">Full name</label>
+          <input id="admin-name" name="full_name" class="field-input" value={v.full_name} minlength="3" maxlength="60" autocomplete="off" required />
+        </div>
+        <div>
+          <label for="admin-phone" class="field-label">Phone number</label>
+          <input id="admin-phone" name="phone" type="tel" inputmode="tel" class="field-input" value={v.phone} placeholder="024 123 4567" autocomplete="off" required />
+          <p class="field-hint">They sign in with this number. It can't already be used by a vendor or rider.</p>
+        </div>
+        <div class="flex gap-3">
+          <button type="submit" class="btn btn-primary">Add admin</button>
+          <a href="/admin/admins" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+    )
+  }
+
+  <section class="card mt-6 overflow-hidden" aria-label="Admins">
+    <ul class="divide-y divide-line">
+      {
+        admins.map((a) => (
+          <li class="px-4 sm:px-5 py-4 flex flex-wrap items-center gap-3">
+            <span class="size-10 rounded-full bg-fill text-ink flex items-center justify-center font-extrabold shrink-0">
+              {a.full_name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('')}
+            </span>
+            <div class="flex-1 min-w-48">
+              <p class="font-bold">
+                {a.full_name}
+                {a.id === me.id && <span class="text-muted font-semibold"> (you)</span>}
+              </p>
+              <p class="text-xs text-muted">
+                <a href={`tel:${a.phone}`} class="tabular no-underline text-muted">{prettyPhone(a.phone)}</a>
+                {' · '}
+                {a.last_signin_at ? `Last signed in ${dateTime(a.last_signin_at)}` : 'Has not signed in yet'}
+              </p>
+              {a.status === 'suspended' && a.status_reason && <p class="text-xs text-danger mt-0.5">Switched off: {a.status_reason}</p>}
+            </div>
+            <span class:list={['badge h-6 text-xs', a.status === 'approved' ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger']}>
+              {a.status === 'approved' ? 'Active' : 'Switched off'}
+            </span>
+            {a.id !== me.id && a.status === 'approved' && (
+              <button type="button" class="btn btn-ghost min-h-9 text-sm text-danger" data-reason-open="admin-off-dialog" data-id={a.id} data-name={a.full_name}>
+                Switch off
+              </button>
+            )}
+            {a.status === 'suspended' && (
+              <form method="post" data-confirm={`Let ${a.full_name} sign in again?`} data-confirm-label="Switch on">
+                <input type="hidden" name="action" value="reactivate" />
+                <input type="hidden" name="id" value={a.id} />
+                <button type="submit" class="btn btn-secondary min-h-9 text-sm">Switch on</button>
+              </form>
+            )}
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+  <p class="text-sm text-muted mt-3">There must always be at least one active admin, and you can't switch off your own account.</p>
+
+  <ReasonDialog
+    id="admin-off-dialog"
+    action="suspend"
+    title="Switch off admin"
+    confirmLabel="Switch off"
+    hint="They're signed out everywhere and can't sign in until an admin switches them back on."
+    placeholder="For example, no longer working with us"
+  />
+</PanelLayout>

@@ -1,0 +1,32 @@
+---
+// Simple shell for partner sign-in, registration and status pages.
+import BaseLayout from './BaseLayout.astro';
+import Logo from '../components/Logo.astro';
+import Copyright from '../components/Copyright.astro';
+import BackButton from '../components/BackButton.astro';
+
+interface Props {
+  title: string;
+  /** Where the back arrow goes if there's no previous page */
+  back?: string;
+}
+const { title, back = '/' } = Astro.props;
+---
+
+<BaseLayout title={title}>
+  <header class="vt-header bg-surface border-b border-line pt-[var(--sat)]">
+    <div class="container-app h-16 flex items-center gap-4">
+      <div class="flex items-center gap-3">
+        <BackButton href={back} />
+        <Logo />
+        <span class="hidden sm:inline text-sm font-semibold text-muted border-l border-line pl-3">Partners</span>
+      </div>
+    </div>
+  </header>
+  <main data-motion="page" class="pb-16">
+    <slot />
+  </main>
+  <footer class="site-only border-t border-line">
+    <Copyright row class="container-app py-5" />
+  </footer>
+</BaseLayout>

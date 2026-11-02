@@ -1,0 +1,102 @@
+---
+// Full cart page (the cart also opens as a drawer from the header).
+import AppLayout from '../layouts/AppLayout.astro';
+import TopBar from '../components/TopBar.astro';
+import Icon from '../components/Icon.astro';
+
+---
+
+<AppLayout title="Cart" mobileHeader="none" nav={false}>
+  <TopBar title="Your cart" back="/" />
+
+  <div class="container-app pt-4 pb-40 lg:pb-16">
+    <!-- Empty -->
+    <div data-empty hidden class="card py-16 px-6 flex flex-col items-start sm:items-center sm:text-center gap-2">
+      <Icon name="bag" size={40} strokeWidth={1.6} class="text-faint" />
+      <h2 class="text-xl font-extrabold mt-2">Your cart is empty</h2>
+      <p class="text-muted">Find something you like and add it here.</p>
+      <a href="/" class="btn btn-primary mt-4">Browse restaurants</a>
+    </div>
+
+    <!-- Filled -->
+    <div data-filled hidden class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+      <section class="card px-5 pt-4" aria-labelledby="cart-items-h">
+        <div class="flex items-center justify-between gap-3">
+          <h2 id="cart-items-h" class="sr-only">Items</h2>
+          <a data-vendor-link href="/" class="font-bold text-ink no-underline hover:underline"></a>
+          <button type="button" data-clear class="btn btn-ghost text-danger text-sm min-h-9 -mr-2">Clear cart</button>
+        </div>
+        <ul data-lines class="divide-y divide-line"></ul>
+        <div class="border-t border-line py-4">
+          <a data-add-more href="/" class="btn btn-ghost px-0">
+            <Icon name="plus" size={18} /> Add more items
+          </a>
+        </div>
+      </section>
+
+      <aside class="card p-5 flex flex-col gap-4 lg:sticky lg:top-6" aria-label="Cart total">
+        <h2 class="text-lg font-extrabold">Summary</h2>
+        <div class="flex flex-col gap-2.5 text-[0.9375rem]">
+          <div class="flex justify-between"><span class="text-muted">Subtotal</span><span data-subtotal class="tabular"></span></div>
+          <div class="flex justify-between">
+            <span class="text-muted">Delivery</span>
+            <span class="tabular" data-fee>Set at checkout</span>
+          </div>
+          <div class="h-px bg-line my-1"></div>
+          <div class="flex justify-between text-lg font-extrabold"><span>Total</span><span data-total class="tabular"></span></div>
+        </div>
+        <a href="/checkout" class="hidden lg:flex btn btn-primary btn-lg w-full">Go to checkout</a>
+      </aside>
+    </div>
+  </div>
+
+  <div data-checkout-bar hidden class="lg:hidden fixed inset-x-0 bottom-0 z-30 bg-surface border-t border-line">
+    <div class="container-app pt-3 pb-[max(1rem,var(--sab))]">
+      <a href="/checkout" class="btn btn-primary btn-lg w-full justify-between px-4">
+        <span>Go to checkout</span>
+        <span data-bar-total class="tabular"></span>
+      </a>
+    </div>
+  </div>
+</AppLayout>
+
+<script>
+  import { cartSubtotal, clearCart, onCartChange } from '../lib/cart';
+  import { renderCartLines } from '../lib/cart-ui';
+  import { confirmAction } from '../lib/confirm';
+  import { money } from '../lib/format';
+
+  const q = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+  const feeEl = q('[data-fee]');
+
+  onCartChange((cart) => {
+    q('[data-empty]').hidden = !!cart;
+    q('[data-filled]').hidden = !cart;
+    q('[data-checkout-bar]').hidden = !cart;
+    if (!cart) return;
+
+    const vendorLink = q<HTMLAnchorElement>('[data-vendor-link]');
+    vendorLink.textContent = cart.vendorName;
+    vendorLink.href = `/vendors/${cart.vendorSlug}`;
+    q<HTMLAnchorElement>('[data-add-more]').href = `/vendors/${cart.vendorSlug}`;
+    renderCartLines(q('[data-lines]'), cart);
+
+    const subtotal = cartSubtotal(cart);
+    // The restaurant's own delivery fee (checkout confirms it)
+    const fee = cart.deliveryFee ?? null;
+    q('[data-subtotal]').textContent = money(subtotal);
+    feeEl.textContent = fee !== null ? money(fee) : 'Set at checkout';
+    q('[data-total]').textContent = money(subtotal + (fee ?? 0));
+    q('[data-bar-total]').textContent = money(subtotal + (fee ?? 0));
+  });
+
+  q('[data-clear]').addEventListener('click', async () => {
+    const yes = await confirmAction({
+      title: 'Clear your cart?',
+      message: 'All items will be removed.',
+      confirmLabel: 'Clear cart',
+      danger: true,
+    });
+    if (yes) clearCart();
+  });
+</script>

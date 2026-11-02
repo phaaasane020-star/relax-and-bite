@@ -1,0 +1,66 @@
+---
+import PartnerAuthLayout from '../../layouts/PartnerAuthLayout.astro';
+import Icon from '../../components/Icon.astro';
+import { getPartnerToken } from '../../lib/session';
+import { getSessionAccount, homeFor } from '../../data/partners';
+
+const account = await getSessionAccount(getPartnerToken(Astro.cookies));
+if (account) return Astro.redirect(homeFor(account));
+---
+
+<PartnerAuthLayout title="Partner with us">
+  <div class="container-app pt-10 md:pt-16">
+    <div class="max-w-3xl">
+      <h1 class="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight">Grow with Relax&amp;Bite</h1>
+      <p class="text-lg text-muted mt-4 max-w-2xl">
+        Sell your food to more customers in Breman Asikuma, or earn money delivering orders around town.
+      </p>
+    </div>
+
+    <div class="grid gap-4 md:grid-cols-2 mt-10">
+      <a href="/partner/register/vendor" class="card p-6 md:p-8 flex flex-col gap-4 no-underline text-ink hover:border-brand group">
+        <span class="size-12 rounded-xl bg-brand-soft text-brand flex items-center justify-center">
+          <Icon name="store" size={26} />
+        </span>
+        <div class="flex flex-col gap-2">
+          <h2 class="text-xl font-extrabold">Sell your food</h2>
+          <p class="text-muted">For restaurants, chop bars and food stands. Get orders on your phone, manage your menu and get paid.</p>
+        </div>
+        <span class="font-bold text-brand flex items-center gap-1 mt-auto">Register your business <Icon name="chevron-right" size={18} /></span>
+      </a>
+
+      <a href="/partner/register/rider" class="card p-6 md:p-8 flex flex-col gap-4 no-underline text-ink hover:border-brand group">
+        <span class="size-12 rounded-xl bg-success-soft text-success flex items-center justify-center">
+          <Icon name="bike" size={26} />
+        </span>
+        <div class="flex flex-col gap-2">
+          <h2 class="text-xl font-extrabold">Deliver with us</h2>
+          <p class="text-muted">For motorbike and bicycle riders. Go online when it suits you and earn the delivery fee on every order.</p>
+        </div>
+        <span class="font-bold text-brand flex items-center gap-1 mt-auto">Apply to ride <Icon name="chevron-right" size={18} /></span>
+      </a>
+    </div>
+
+    <section class="mt-12" aria-labelledby="how-h">
+      <h2 id="how-h" class="text-lg font-extrabold">How it works</h2>
+      <ol class="grid gap-4 md:grid-cols-3 mt-4">
+        <li class="card p-5 flex gap-4">
+          <span class="size-8 rounded-full bg-ink text-paper font-bold flex items-center justify-center shrink-0">1</span>
+          <span><strong class="block">Register</strong><span class="text-sm text-muted">Fill in your details and create a password.</span></span>
+        </li>
+        <li class="card p-5 flex gap-4">
+          <span class="size-8 rounded-full bg-ink text-paper font-bold flex items-center justify-center shrink-0">2</span>
+          <span><strong class="block">We review it</strong><span class="text-sm text-muted">We check your details and may call you.</span></span>
+        </li>
+        <li class="card p-5 flex gap-4">
+          <span class="size-8 rounded-full bg-ink text-paper font-bold flex items-center justify-center shrink-0">3</span>
+          <span><strong class="block">Start working</strong><span class="text-sm text-muted">Sign in with your phone number and password every time you visit.</span></span>
+        </li>
+      </ol>
+    </section>
+
+    <p class="mt-10 text-muted">
+      Already registered? <a href="/partner/login" class="font-bold text-brand">Sign in</a>
+    </p>
+  </div>
+</PartnerAuthLayout>

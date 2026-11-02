@@ -1,0 +1,138 @@
+---
+// Terms and Conditions for customers, with the main rules for partners.
+// TODO before launch: have a lawyer review this and fill in SITE.legalName,
+// address and contacts. Partners also need a separate partner agreement.
+import LegalPage from '../components/LegalPage.astro';
+import { SITE } from '../data/site';
+import { prettyPhone } from '../lib/format';
+
+const commission = Math.round(SITE.commissionRate * 100);
+const sections = [
+  { id: 'about', title: 'About these terms' },
+  { id: 'service', title: 'What we do' },
+  { id: 'account', title: 'Your account' },
+  { id: 'ordering', title: 'Ordering and prices' },
+  { id: 'payment', title: 'Payment' },
+  { id: 'delivery', title: 'Delivery and the delivery code' },
+  { id: 'cancel', title: 'Cancellations and refunds' },
+  { id: 'food', title: 'Food, allergies and quality' },
+  { id: 'conduct', title: 'Respect and fair use' },
+  { id: 'partners', title: 'Restaurants and riders' },
+  { id: 'liability', title: 'Our responsibility' },
+  { id: 'changes', title: 'Changes and ending' },
+  { id: 'law', title: 'Law and disputes' },
+  { id: 'contact', title: 'Contact us' },
+];
+---
+
+<LegalPage title="Terms and Conditions" sections={sections} icon="document" heading="The rules for using Relax&Bite">
+  <h2 id="about">About these terms</h2>
+  <p>
+    These terms apply when you use the {SITE.name} app or website, run by {SITE.legalName}. By creating an account or
+    placing an order you agree to them, and to our <a href="/privacy">Privacy Policy</a>. Please read them carefully.
+    Nothing in these terms takes away rights you have under Ghanaian consumer law.
+  </p>
+
+  <h2 id="service">What we do</h2>
+  <p>
+    {SITE.name} is a marketplace. We let you order from independent restaurants and chop bars, and we arrange delivery
+    by independent riders. The restaurant prepares your food and is responsible for it. The rider carries it to you. We
+    take the order, handle payment and support you if something goes wrong. We currently deliver in {SITE.area} and are
+    adding more towns over time.
+  </p>
+
+  <h2 id="account">Your account</h2>
+  <ul>
+    <li>You must be 18 or older to create an account.</li>
+    <li>You sign in with your email address (a one-time code sent by email) or with your Google account. Keep your email account and codes to yourself. Orders placed from your account are your responsibility.</li>
+    <li>Give us correct details, especially your phone number and delivery address, so your order reaches you.</li>
+    <li>You can browse without an account, but you need to sign in to place an order.</li>
+  </ul>
+
+  <h2 id="ordering">Ordering and prices</h2>
+  <ul>
+    <li>Restaurants set their own menus and prices, in Ghana cedis (GH₵). Photos are for illustration and portions may look different.</li>
+    <li>The delivery fee for your town is shown before you pay. The total you see at checkout is what you pay.</li>
+    <li>Your order is confirmed when the restaurant accepts it. A restaurant may decline an order, for example if an item has run out. If that happens you will not be charged, or you will be refunded in full.</li>
+    <li>Delivery times are estimates. Busy kitchens, weather and traffic can cause delays.</li>
+  </ul>
+
+  <h2 id="payment">Payment</h2>
+  <ul>
+    <li>You pay in the app with Mobile Money or a bank card through our payment provider, Paystack. Cash on delivery is not offered.</li>
+  </ul>
+
+  <h2 id="delivery">Delivery and the delivery code</h2>
+  <ul>
+    <li>Every order has a 4-digit delivery code on its order page. <strong>Only give the code to the rider after you have your food.</strong> Giving the code confirms that your order was delivered.</li>
+    <li>Never share the code on the phone or by message. {SITE.name} staff and riders will never ask for it before they reach you.</li>
+    <li>Check that the rider's name and photo match the ones on your order page.</li>
+    <li>Please be reachable on your phone. If the rider cannot reach you for 10 minutes after arriving, the order may be cancelled and, if the food was already made, not refunded.</li>
+  </ul>
+
+  <h2 id="cancel">Cancellations and refunds</h2>
+  <ul>
+    <li>You can cancel free of charge until the restaurant accepts your order. After that the kitchen has started cooking, so call the restaurant or contact us.</li>
+    <li>If an order is cancelled by the restaurant or by us, you get a full refund.</li>
+    <li>If something is missing, wrong or not fit to eat, tell us within 24 hours through the order page or our support line, with a photo if you can. We will look into it with the restaurant and may refund all or part of the order.</li>
+    <li>Refunds go back to the same Mobile Money wallet or card, usually within 1 to 3 working days.</li>
+  </ul>
+
+  <h2 id="food">Food, allergies and quality</h2>
+  <p>
+    Restaurants are responsible for preparing food safely and describing it accurately. If you have an allergy or a
+    dietary need, call the restaurant before ordering to ask about ingredients. We cannot guarantee that any dish is free
+    from a particular ingredient.
+  </p>
+
+  <h2 id="conduct">Respect and fair use</h2>
+  <p>Please treat restaurants, riders and our staff with respect. We may suspend or close an account that:</p>
+  <ul>
+    <li>places fake or prank orders, or refuses to pay for delivered food;</li>
+    <li>threatens, abuses or harasses anyone;</li>
+    <li>uses someone else's phone number, card or Mobile Money wallet without permission;</li>
+    <li>tries to break, copy or misuse the app.</li>
+  </ul>
+
+  <h2 id="partners">Restaurants and riders</h2>
+  <p>
+    Restaurants and riders must apply and be approved before they can use {SITE.name}. They also agree to a separate
+    partner agreement. In short:
+  </p>
+  <ul>
+    <li>Applications must be truthful. Riders must provide a valid Ghana Card, a recent passport-size photo and their vehicle details, and hold any licence the law requires.</li>
+    <li>Restaurants keep their menu, prices, opening hours and availability up to date and follow food hygiene rules.</li>
+    <li>When an order is delivered, its food price goes into the restaurant's {SITE.name} wallet and its delivery fee into the rider's. {SITE.name} keeps {commission}% of every withdrawal from a wallet. Restaurants pay nothing on withdrawals in their first {SITE.freeDays} days after approval. Withdrawals are sent by Mobile Money.</li>
+    <li>Riders must ride safely, follow road traffic laws, and collect the delivery code before completing a delivery.</li>
+    <li>We may pause or remove a partner account for safety reasons, repeated complaints, fraud or false information.</li>
+  </ul>
+
+  <h2 id="liability">Our responsibility</h2>
+  <p>
+    We work hard to keep {SITE.name} running and to sort out problems quickly. As far as the law allows, we are not
+    responsible for losses we could not reasonably foresee or control, such as network outages, severe weather or the
+    actions of a restaurant or rider outside our control. If we are responsible for a problem with an order, the most we
+    will pay is the amount you paid for that order. This does not limit our responsibility for death or injury caused by
+    our negligence, or anything else the law does not allow us to limit.
+  </p>
+
+  <h2 id="changes">Changes and ending</h2>
+  <p>
+    We may update these terms as the service grows. We will show the new date at the top and, for important changes,
+    tell you in the app first. You can stop using {SITE.name} and ask us to delete your account at any time.
+  </p>
+
+  <h2 id="law">Law and disputes</h2>
+  <p>
+    These terms are governed by the laws of the Republic of Ghana. If you have a complaint, please contact us first and we
+    will try to resolve it quickly. If we cannot agree, the dispute may be taken to the courts of Ghana.
+  </p>
+
+  <h2 id="contact">Contact us</h2>
+  <ul>
+    <li>Phone: <a href={`tel:${SITE.supportPhone}`}>{prettyPhone(SITE.supportPhone)}</a></li>
+    <li>Support chat: <a href="/help/chat">chat with us in the app</a></li>
+    <li>Email: <a href={`mailto:${SITE.supportEmail}`}>{SITE.supportEmail}</a></li>
+    <li>Post: {SITE.legalName}, {SITE.address}</li>
+  </ul>
+</LegalPage>

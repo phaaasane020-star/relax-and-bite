@@ -1,0 +1,87 @@
+---
+// Kitchen ticket used on the vendor board and in admin.
+import type { Order } from '../../data/types';
+import { minutesSince } from '../../data/store';
+import { money, prettyPhone } from '../../lib/format';
+
+interface Props {
+  order: Order;
+  highlight?: boolean;
+  lateAfter?: number; // minutes
+  showVendor?: boolean;
+}
+const { order: o, highlight = false, lateAfter = 0, showVendor = false } = Astro.props;
+const mins = minutesSince(o.created_at);
+const late = lateAfter > 0 && mins > lateAfter;
+const ago = mins < 1 ? 'Just now' : `${mins} min ago`;
+const payLabel =
+  o.payment_method === 'cash'
+    ? o.payment_status === 'paid'
+      ? 'Cash collected'
+      : 'Cash on delivery'
+    : o.payment_status === 'refunded'
+      ? 'Refunded'
+      : 'Paid online';
+---
+
+<article
+  class:list={[
+    'bg-surface rounded-[0.875rem] p-4 flex flex-col gap-3 border',
+    highlight ? 'border-brand ring-[3px] ring-brand-soft' : 'border-line',
+  ]}
+>
+  <div class="flex justify-between items-baseline gap-3">
+    <span class="text-[1.0625rem] font-extrabold tabular">{o.code}</span>
+    <span class:list={['text-[0.8125rem] font-bold', late ? 'text-danger' : highlight ? 'text-brand-ink' : 'text-muted']}>
+      {late ? `${mins} min, running late` : ago}
+    </span>
+  </div>
+  {showVendor && <p class="text-sm font-semibold -mt-2">{o.vendor_name}</p>}
+  <ul class="flex flex-col gap-1 text-sm">
+    {
+      o.items.map((i) => (
+        <li>
+          <strong>{i.quantity}×</strong> {i.name}
+          {i.options.length > 0 && <span class="text-muted">, {i.options.map((x) => x.choice).join(', ')}</span>}
+        </li>
+      ))
+    }
+  </ul>
+  {o.note && <p class="px-2.5 py-2 rounded-lg bg-warning-soft text-[0.8125rem] text-warning-ink">{o.note}</p>}
+  <div class="flex justify-between items-start gap-3 text-sm">
+    <span class="text-muted min-w-0">
+      <span class="block font-semibold text-ink-soft">{[o.locality_name, o.zone_name].filter(Boolean).join(", ")}</span>
+      <span class="block truncate">{o.delivery_landmark}</span>
+    </span>
+    <span class="text-right shrink-0">
+      <span class="block font-extrabold tabular">{money(o.total)}</span>
+      <span class:list={['block text-xs font-semibold', o.payment_method === 'cash' && o.payment_status !== 'paid' ? 'text-warning-ink' : 'text-muted']}>{payLabel}</span>
+      {o.discount > 0 && <span class="block text-xs text-muted">{money(o.discount)} promo, paid by Relax&Bite</span>}
+    </span>
+  </div>
+  {
+    o.rider_id && (
+      <div class="flex items-center gap-2.5 p-2.5 rounded-lg bg-paper text-sm">
+        {o.rider_photo ? (
+          <img src={o.rider_photo} alt={`Photo of ${o.rider_name}`} class="size-10 rounded-full object-cover shrink-0" />
+        ) : (
+          <span class="size-10 rounded-full bg-line flex items-center justify-center text-xs font-bold shrink-0">
+            {o.rider_name
+              .split(' ')
+              .map((n) => n[0])
+              .join('')
+              .slice(0, 2)}
+          </span>
+        )}
+        <span class="flex flex-col min-w-0">
+          <span class="font-bold truncate">{o.rider_name}</span>
+          <span class="text-xs text-muted">
+            <a href={`tel:${o.rider_phone}`} class="text-muted no-underline tabular">{prettyPhone(o.rider_phone)}</a>
+            {o.rider_plate && <span>, {o.rider_plate}</span>}
+          </span>
+        </span>
+      </div>
+    )
+  }
+  <slot />
+</article>

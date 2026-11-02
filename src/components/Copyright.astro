@@ -1,0 +1,42 @@
+---
+// The copyright and credit line.
+// Website: the full line at the bottom of every page.
+// App: one short, quiet line, only where people expect it (Account, welcome,
+// legal pages), like other apps.
+import { SITE } from '../data/site';
+interface Props {
+  class?: string;
+  /** Put both lines side by side on wide screens (website) */
+  row?: boolean;
+  /** site: website only (default). app: app only. always: both */
+  show?: 'site' | 'app' | 'always';
+  /** Add the app version (Account page in the app) */
+  version?: boolean;
+}
+const { class: extra, row = false, show = 'site', version = false } = Astro.props;
+const year = new Date().getFullYear();
+---
+
+{
+  show !== 'app' && (
+    <p
+      class:list={[
+        'copyright site-only flex flex-col items-center text-center gap-1 text-[0.8125rem] text-muted',
+        row && 'md:flex-row md:flex-wrap md:justify-between md:text-left md:gap-2',
+        extra,
+      ]}
+    >
+      <span>&copy; {year} {SITE.name}. All rights reserved.</span>
+      <span>
+        Powered by <a href={SITE.builtBy.url} class="text-ink font-semibold no-underline hover:underline" target="_blank" rel="noopener">{SITE.builtBy.name}</a>
+      </span>
+    </p>
+  )
+}
+{
+  show !== 'site' && (
+    <p class:list={['copyright app-only text-center text-xs text-faint', extra]}>
+      {SITE.name}{version && ` ${SITE.appVersion}`} · by {SITE.builtBy.name}
+    </p>
+  )
+}

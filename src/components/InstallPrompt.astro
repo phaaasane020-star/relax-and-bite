@@ -1,0 +1,115 @@
+---
+// "Get the Relax&Bite app" card, so people can put the website on their home
+// screen as an app (opens full screen, can send order updates).
+// - Android (Chrome, Samsung Internet, Edge): an Install button that opens
+//   the phone's own install box; if the browser doesn't offer one, it says
+//   where to find "Install app" in the browser menu.
+// - iPhone and iPad (Safari): there's no install button on Apple phones, so it
+//   explains Share, then Add to Home Screen.
+// Shown once after a few seconds; "×" hides it for two weeks. Never shown in
+// the Android app from the Play Store, or once it's already on the home screen.
+---
+
+<div data-install hidden class="fixed inset-x-3 z-[55] bottom-[calc(5rem+var(--sab))] md:hidden">
+  <div class="rounded-2xl bg-surface border border-line shadow-[0_12px_32px_-8px_var(--shadow-strong)] p-4">
+    <div class="flex items-start gap-3">
+      <img src="/icons/apple-touch-icon.png" alt="" width="48" height="48" class="size-12 rounded-xl shrink-0" />
+      <div class="flex-1 min-w-0">
+        <p class="font-extrabold">Get the Relax&amp;Bite app</p>
+        <!-- Android with an install button -->
+        <p data-install-android class="text-sm text-muted mt-0.5 leading-snug" hidden>
+          Add it to your home screen. It opens full screen, like an app, and can send you order updates.
+        </p>
+        <!-- Android without one: where it is in the menu -->
+        <p data-install-menu class="text-sm text-muted mt-0.5 leading-snug" hidden>
+          Tap the <strong class="text-ink">⋮</strong> menu at the top of your browser, then <strong class="text-ink">Install app</strong> or <strong class="text-ink">Add to Home screen</strong>.
+        </p>
+        <!-- iPhone -->
+        <p data-install-ios class="text-sm text-muted mt-0.5 leading-snug" hidden>
+          Tap
+          <svg class="inline -mt-1 text-[#0a84ff]" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12M8 7l4-4 4 4" /><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" /></svg>
+          <strong class="text-ink">Share</strong>, then <strong class="text-ink">Add to Home Screen</strong>. It opens full screen, like an app, and can send you order updates.
+        </p>
+        <button type="button" data-install-go hidden class="btn btn-primary mt-3 min-h-10 px-5">Install</button>
+      </div>
+      <button type="button" data-install-close class="icon-btn border-0 -mr-2 -mt-2 shrink-0" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
+
+  const box = document.querySelector<HTMLElement>('[data-install]');
+  const KEY = 'rb_install_later';
+  const root = document.documentElement;
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const iosSafari = ios && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+  const android = /Android/.test(ua);
+  const installed = root.classList.contains('pwa') || root.classList.contains('in-app');
+
+  let snoozed = false;
+  try {
+    snoozed = Number(localStorage.getItem(KEY) || 0) > Date.now();
+  } catch {
+    /* storage unavailable: show it */
+  }
+
+  const part = (name: string) => box?.querySelector<HTMLElement>(`[data-install-${name}]`) ?? null;
+  const show = (which: 'android' | 'menu' | 'ios') => {
+    if (!box || !box.hidden) return;
+    part('android')!.hidden = which !== 'android';
+    part('menu')!.hidden = which !== 'menu';
+    part('ios')!.hidden = which !== 'ios';
+    part('go')!.hidden = which !== 'android';
+    box.hidden = false;
+    box.animate?.([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'ease-out' });
+  };
+  const hide = (later: boolean) => {
+    if (box) box.hidden = true;
+    if (!later) return;
+    try {
+      localStorage.setItem(KEY, String(Date.now() + 14 * 864e5));
+    } catch {
+      /* fine */
+    }
+  };
+
+  if (box && !installed && !snoozed) {
+    box.querySelector('[data-install-close]')?.addEventListener('click', () => hide(true));
+
+    if (iosSafari) {
+      window.setTimeout(() => show('ios'), 4000);
+    } else if (android) {
+      let offer: InstallEvent | null = null;
+      // Chrome (and others) say when the site can be installed
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        offer = e as InstallEvent;
+        window.setTimeout(() => show('android'), 2500);
+      });
+      // No offer after a while: explain where it is in the menu
+      window.setTimeout(() => {
+        if (!offer) show('menu');
+      }, 7000);
+      part('go')?.addEventListener('click', async () => {
+        if (!offer) return show('menu');
+        await offer.prompt();
+        const { outcome } = await offer.userChoice;
+        offer = null;
+        hide(outcome !== 'accepted');
+      });
+      window.addEventListener('appinstalled', () => hide(false));
+    }
+  }
+
+  // The service worker lets the phone install the site and show order updates
+  if ('serviceWorker' in navigator && !root.classList.contains('in-app')) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* not available (for example plain http on a phone): the card still explains the menu */
+    });
+  }
+</script>

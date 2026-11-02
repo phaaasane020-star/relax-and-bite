@@ -1,0 +1,161 @@
+---
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Icon from '../../components/Icon.astro';
+import { securitySummary, getAudit, getAllVendors, getOrders, getStats, minutesSince, STATUS_BADGE, STATUS_SHORT } from '../../data/store';
+import { dateTime } from '../../lib/format';
+import { listAccounts } from '../../data/partners';
+import { money } from '../../lib/format';
+
+const stats = await getStats();
+const pending = await listAccounts({ status: 'pending' });
+const active = await getOrders({ status: 'active' });
+
+const waitingRider = active.filter((o) => o.status === 'ready' && !o.rider_id);
+const prepMax = new Map((await getAllVendors()).map((v) => [v.id, v.prep_time_max]));
+const late = active.filter((o) => ['accepted', 'preparing'].includes(o.status) && minutesSince(o.created_at) > (prepMax.get(o.vendor_id) ?? 30) + 5);
+const unaccepted = active.filter((o) => o.status === 'placed' && minutesSince(o.created_at) >= 5);
+
+const tiles = [
+  { label: 'Orders today', value: String(stats.ordersToday) },
+  { label: 'Sales today', value: money(stats.salesToday) },
+  { label: 'Orders in progress', value: String(stats.active) },
+  { label: 'Stores open', value: String(stats.liveVendors) },
+  { label: 'Riders online', value: String(stats.ridersOnline) },
+];
+
+const activity = await getAudit(12);
+const sec = await securitySummary(24);
+
+const attention = [
+  { count: stats.openIssues, text: 'open reports from customers, vendors or riders', href: '/admin/issues' },
+  { count: pending.length, text: 'applications waiting for review', href: '/admin/applications' },
+  { count: unaccepted.length, text: 'orders not accepted after 5 minutes', href: '/admin/orders' },
+  { count: waitingRider.length, text: 'ready orders without a rider', href: '/admin/orders' },
+  { count: late.length, text: 'orders running late in the kitchen', href: '/admin/orders' },
+].filter((a) => a.count > 0);
+---
+
+<PanelLayout title="Admin overview" refresh={30}>
+  <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Overview</h1>
+
+  {
+    (sec.failed > 0 || sec.lockouts > 0) && (
+      <a
+        href="/admin/activity?view=failed"
+        class:list={[
+          'mt-5 flex items-start gap-3 p-4 rounded-xl no-underline',
+          sec.adminFailed > 0 || sec.lockouts > 0 ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning-ink',
+        ]}
+      >
+        <Icon name="shield" size={22} class="shrink-0 mt-0.5" />
+        <span class="flex-1 text-sm">
+          <strong class="block text-[0.9375rem]">Wrong passwords today</strong>
+          {sec.failed} failed {sec.failed === 1 ? 'attempt' : 'attempts'}
+          {sec.lockouts > 0 && `, ${sec.lockouts} ${sec.lockouts === 1 ? 'account' : 'accounts'} locked`}
+          {sec.adminFailed > 0 && `, ${sec.adminFailed} on admin accounts`}. Tap to see who.
+        </span>
+        <Icon name="chevron-right" size={18} class="shrink-0 mt-0.5" />
+      </a>
+    )
+  }
+
+  <dl class="mt-6 grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+    {
+      tiles.map((t) => (
+        <div class="card p-4 sm:p-5 min-w-0">
+          <dt class="text-sm font-semibold text-muted">{t.label}</dt>
+          <dd class="text-xl sm:text-2xl font-extrabold tabular mt-1 break-words">{t.value}</dd>
+        </div>
+      ))
+    }
+  </dl>
+
+  <!-- On phones the tab bar has no room for Promo codes, so it's linked here -->
+  <a href="/admin/promos" class="lg:hidden card mt-3 p-4 flex items-center gap-3 no-underline text-ink">
+    <Icon name="tag" size={20} class="text-muted shrink-0" />
+    <span class="flex-1 font-semibold">Promo codes</span>
+    <Icon name="chevron-right" size={18} class="text-muted" />
+  </a>
+
+  <div class="mt-6 grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)] items-start">
+    <section class="card p-5 flex flex-col gap-3" aria-labelledby="att-h">
+      <h2 id="att-h" class="font-extrabold">Needs attention</h2>
+      {attention.length === 0 && <p class="text-sm text-muted flex items-center gap-2"><Icon name="check" size={18} class="text-success" /> Nothing needs you right now.</p>}
+      {
+        attention.map((a) => (
+          <a href={a.href} class="flex items-center gap-3 p-3 rounded-lg bg-warning-soft text-warning-ink no-underline hover:brightness-95">
+            <span class="min-w-8 h-8 px-2 rounded-full bg-surface font-extrabold flex items-center justify-center tabular">{a.count}</span>
+            <span class="flex-1 text-sm font-semibold">{a.text}</span>
+            <Icon name="chevron-right" size={18} />
+          </a>
+        ))
+      }
+    </section>
+
+    <section class="card overflow-hidden" aria-labelledby="live-h">
+      <div class="px-5 py-4 flex items-center justify-between border-b border-line">
+        <h2 id="live-h" class="font-extrabold">Orders in progress</h2>
+        <a href="/admin/orders" class="text-sm font-bold text-brand no-underline">All orders</a>
+      </div>
+      {
+        active.length === 0 ? (
+          <p class="p-5 text-sm text-muted">No orders in progress.</p>
+        ) : (
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm rtable">
+              <thead class="bg-paper text-left text-muted">
+                <tr>
+                  <th class="px-5 py-3 font-semibold">Order</th>
+                  <th class="px-5 py-3 font-semibold">Restaurant</th>
+                  <th class="px-5 py-3 font-semibold">Area</th>
+                  <th class="px-5 py-3 font-semibold">Age</th>
+                  <th class="px-5 py-3 font-semibold">Rider</th>
+                  <th class="px-5 py-3 font-semibold">Status</th>
+                  <th class="px-5 py-3 font-semibold text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-line">
+                {active.slice(0, 10).map((o) => (
+                  <tr>
+                    <td class="px-5 py-3 font-bold tabular whitespace-nowrap">{o.code}</td>
+                    <td class="px-5 py-3 whitespace-nowrap">{o.vendor_name}</td>
+                    <td class="px-5 py-3">{o.zone_name}</td>
+                    <td class="px-5 py-3 tabular whitespace-nowrap">{minutesSince(o.created_at)} min</td>
+                    <td class="px-5 py-3 whitespace-nowrap">{o.rider_name || <span class="text-muted">None yet</span>}</td>
+                    <td class="px-5 py-3"><span class:list={['badge h-6 text-xs', STATUS_BADGE[o.status]]}>{STATUS_SHORT[o.status]}</span></td>
+                    <td class="px-5 py-3 text-right font-bold tabular whitespace-nowrap">{money(o.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </section>
+  </div>
+
+  <section class="card mt-6 overflow-hidden" aria-labelledby="activity-h">
+    <div class="px-5 py-4 border-b border-line">
+      <div class="flex items-center justify-between gap-3">
+        <h2 id="activity-h" class="font-extrabold">Recent activity</h2>
+        <a href="/admin/activity" class="text-sm font-bold text-brand whitespace-nowrap">See all</a>
+      </div>
+      <p class="text-sm text-muted">Who did what, including every sign-in.</p>
+    </div>
+    {
+      activity.length === 0 ? (
+        <p class="p-5 text-sm text-muted">Actions by vendors, riders and admins will be listed here.</p>
+      ) : (
+        <ul class="divide-y divide-line text-sm">
+          {activity.map((a) => (
+            <li class="px-5 py-3 flex flex-wrap gap-x-4 gap-y-1">
+              <span class="text-muted tabular w-36 shrink-0">{dateTime(a.at)}</span>
+              <span class:list={['font-semibold', a.severity === 'danger' ? 'text-danger' : a.severity === 'warning' ? 'text-warning-ink' : '']}>{a.actor}</span>
+              <span class="text-ink-soft">{a.action}</span>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
+</PanelLayout>

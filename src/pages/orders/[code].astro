@@ -1,0 +1,529 @@
+---
+import { clientInfo } from '../../lib/client-info';
+import AppLayout from '../../layouts/AppLayout.astro';
+import TopBar from '../../components/TopBar.astro';
+import Icon from '../../components/Icon.astro';
+import MomoPaySheet from '../../components/MomoPaySheet.astro';
+import { paystackReady } from '../../lib/paystack';
+import { audit, cancelOrder, confirmPayment, createIssue, getOrderByCode, getVendorById, isActive, ISSUE_CATEGORIES, rateOrder, startPayment, CUSTOMER_STATUS } from '../../data/store';
+import { takeFlash } from '../../lib/actions';
+import { getRider } from '../../data/partners';
+import { getUser, ownsOrder } from '../../lib/session';
+import { SITE } from '../../data/site';
+import { clock, dateTime, money, prettyPhone } from '../../lib/format';
+import type { Order, OrderStatus } from '../../data/types';
+import { estimatedArrival, liveOrder } from '../../lib/live-order';
+
+const code = Astro.params.code ?? '';
+let actionError = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action'));
+  try {
+    const target = await getOrderByCode(code);
+    if (!target || !ownsOrder(Astro.cookies, target)) throw new Error('Only the person who placed this order can change it.');
+    const who = `Customer ${prettyPhone(target.customer_phone)}`;
+    if (action === 'pay') {
+      // Try paying again: off to Paystack's payment page
+      return Astro.redirect(await startPayment(code, Astro.url.origin), 303);
+    }
+    if (action === 'cancel') {
+      await cancelOrder(code);
+      await audit(who, `Cancelled ${target.code}`, { kind: 'order', severity: 'warning', ...clientInfo(Astro) });
+    }
+    if (action === 'rate') {
+      await rateOrder(code, Number(form.get('rating')));
+      await audit(who, `Rated ${target.code} ${Number(form.get('rating'))} out of 5`, { kind: 'order', ...clientInfo(Astro) });
+    }
+    if (action === 'report') {
+      await createIssue({
+        order_code: target.code,
+        reporter_role: 'customer',
+        reporter_name: getUser(Astro.cookies)?.name || 'Customer',
+        reporter_phone: target.customer_phone,
+        category: String(form.get('category') ?? ''),
+        message: String(form.get('message') ?? ''),
+      });
+      await audit(who, `Reported a problem on ${target.code}: ${String(form.get('category') ?? '')}`, { kind: 'report', severity: 'warning', ...clientInfo(Astro) });
+      return Astro.redirect(`/orders/${code}?reported=1`, 303);
+    }
+    return Astro.redirect(`/orders/${code}`, 303);
+  } catch (e) {
+    actionError = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const found = await getOrderByCode(code);
+if (!found) return Astro.rewrite('/404');
+let order: Order = found;
+
+// Waiting for payment: ask Paystack how it's going (the page reloads every 15 seconds while waiting)
+let payMessage = takeFlash(Astro.cookies);
+let paidNow = false;
+if (order.status === 'pending_payment' && order.payment_status === 'unpaid' && order.paystack_reference && ownsOrder(Astro.cookies, order)) {
+  try {
+    const result = await confirmPayment(order.paystack_reference);
+    order = result.order;
+    paidNow = result.outcome === 'paid';
+    if (result.outcome !== 'waiting' && result.message) payMessage = result.message;
+  } catch {
+    /* Paystack unreachable for a moment: the next reload tries again */
+  }
+}
+const awaitingPayment = order.status === 'pending_payment';
+// Mobile Money is paid inside the app (a prompt on their phone); card goes to Paystack's page
+const inAppMomo = awaitingPayment && order.payment_method === 'momo' && paystackReady() && ownsOrder(Astro.cookies, order);
+
+const vendor = await getVendorById(order.vendor_id);
+const rider = await getRider(order.rider_id);
+const owner = ownsOrder(Astro.cookies, order);
+const justPlaced = Astro.url.searchParams.get('placed') === '1' || paidNow;
+const reported = Astro.url.searchParams.get('reported') === '1';
+const showCode = owner && isActive(order.status) && !awaitingPayment;
+const active = isActive(order.status);
+
+const ORDER: OrderStatus[] = ['placed', 'accepted', 'preparing', 'ready', 'picked_up', 'delivered'];
+const idx = (s: OrderStatus) => ORDER.indexOf(s);
+const timeline: { status: OrderStatus; label: string }[] = [
+  { status: 'placed', label: 'Order placed' },
+  { status: 'accepted', label: 'Accepted by the kitchen' },
+  { status: 'preparing', label: 'Preparing your food' },
+  { status: 'picked_up', label: 'Rider on the way' },
+  { status: 'delivered', label: 'Delivered' },
+];
+const eventAt = (s: OrderStatus) => order.events.find((e) => e.status === s)?.at;
+const currentIdx = idx(order.status);
+const latestReached = [...timeline].reverse().find((t) => currentIdx >= idx(t.status))?.status;
+
+const eta = estimatedArrival(order, vendor);
+// The tracker on the phone's lock screen (the app only shows it when notifications are allowed)
+const live = owner ? liveOrder(order, vendor, Astro.url.origin) : null;
+const deliveredAt = eventAt('delivered');
+
+const headline: Record<OrderStatus, string> = {
+  pending_payment: order.payment_status === 'failed' ? "Your payment didn't go through." : 'Waiting for your payment.',
+  placed: `Waiting for ${order.vendor_name} to accept your order.`,
+  accepted: `${order.vendor_name} has accepted your order.`,
+  preparing: `${order.vendor_name} is preparing your food.`,
+  ready: 'Your food is ready and waiting for the rider.',
+  picked_up: 'Your rider has your food and is on the way.',
+  delivered: 'Your order was delivered. Enjoy your meal.',
+  cancelled: 'This order was cancelled.',
+};
+
+const riderNote = order.rider_id
+  ? order.status === 'picked_up'
+    ? `${order.rider_name} has your food and will call you on arrival. Keep your phone close.`
+    : `${order.rider_name} will deliver your order.`
+  : order.status === 'picked_up'
+    ? 'Your rider will call you when they arrive. Keep your phone close.'
+    : order.status === 'ready'
+      ? 'A rider is on the way to pick up your food.'
+      : 'A rider will be assigned when your food is ready.';
+
+const paymentLabel = { momo: 'Mobile Money', card: 'Card', cash: 'Cash on delivery' }[order.payment_method];
+const badgeClass: Record<string, string> = {
+  delivered: 'bg-success-soft text-success',
+  cancelled: 'bg-fill text-ink-soft',
+};
+---
+
+<AppLayout title={`Order ${order.code}`} mobileHeader="none" nav={false}>
+  <TopBar title="Order status" subtitle={order.code} back="/orders" backLabel="All orders">
+    <a slot="right" href="/help" class="btn btn-ghost text-sm">Help</a>
+  </TopBar>
+
+  <div class="container-app pt-6 pb-12">
+  <div class="grid gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start">
+  <div class="flex flex-col gap-4">
+    {
+      justPlaced && order.status !== 'cancelled' && !awaitingPayment && (
+        <div role="status" class="flex gap-3 items-start p-4 rounded-xl bg-success-soft text-success">
+          <Icon name="check" size={20} class="draw-check shrink-0 mt-0.5" strokeWidth={2.6} />
+          <p class="text-sm font-semibold">Order placed. We've sent it to {order.vendor_name}.</p>
+        </div>
+      )
+    }
+    {
+      reported && (
+        <div role="status" class="flex gap-3 items-start p-4 rounded-xl bg-success-soft text-success">
+          <Icon name="check" size={20} class="shrink-0 mt-0.5" strokeWidth={2.6} />
+          <p class="text-sm font-semibold">Thanks for telling us. Our team will call you on {prettyPhone(order.customer_phone)} shortly.</p>
+        </div>
+      )
+    }
+    {
+      !owner && (
+        <div class="flex gap-3 items-start p-4 rounded-xl bg-warning-soft text-warning-ink">
+          <Icon name="lock" size={20} class="shrink-0 mt-0.5" />
+          <p class="text-sm">
+            <strong>Details are hidden.</strong> To see the delivery code and order details, open this page on the phone you ordered from, or
+            <a href={`/login?next=/orders/${order.code}`} data-open="auth" class="font-bold text-warning-ink"> sign in with the number used for this order</a>.
+          </p>
+        </div>
+      )
+    }
+    {
+      actionError && (
+        <div role="alert" data-form-error class="flex gap-3 items-start p-4 rounded-xl bg-danger-soft text-danger">
+          <Icon name="alert" size={20} class="shrink-0 mt-0.5" />
+          <p class="text-sm font-semibold">{actionError}</p>
+        </div>
+      )
+    }
+
+    {
+      payMessage && (
+        <div role="alert" class:list={['flex gap-3 items-start p-4 rounded-xl', order.payment_status === 'refunded' || awaitingPayment ? 'bg-warning-soft text-warning-ink' : 'bg-danger-soft text-danger']}>
+          <Icon name="alert" size={20} class="shrink-0 mt-0.5" />
+          <p class="text-sm font-semibold">{payMessage}</p>
+        </div>
+      )
+    }
+
+    <!-- Headline -->
+    <section class="px-1 flex flex-col gap-1.5">
+      {
+        active && !awaitingPayment && (
+          <>
+            <p class="text-[0.9375rem] font-semibold text-muted">Estimated arrival</p>
+            <p class="text-[2.75rem] leading-[3rem] font-extrabold tracking-[-0.03em] tabular">{clock(eta)}</p>
+          </>
+        )
+      }
+      {
+        order.status === 'delivered' && deliveredAt && (
+          <>
+            <p class="text-[0.9375rem] font-semibold text-muted">Delivered</p>
+            <p class="text-[2.75rem] leading-[3rem] font-extrabold tracking-[-0.03em] tabular">{clock(deliveredAt)}</p>
+          </>
+        )
+      }
+      <p class:list={['font-semibold', order.status === 'cancelled' ? 'text-2xl font-extrabold' : 'text-base']}>
+        {headline[order.status]}
+      </p>
+      {
+        order.status === 'cancelled' && order.payment_status === 'refunded' && (
+          <p class="text-sm text-muted">Your payment of {money(order.total)} will be refunded to your {paymentLabel}.</p>
+        )
+      }
+    </section>
+
+    {
+      awaitingPayment && owner && (
+        <section class="card p-5 flex flex-col gap-4" aria-labelledby="pay-h">
+          <div>
+            <h2 id="pay-h" class="text-lg font-extrabold">{order.payment_status === 'failed' ? 'Try paying again' : 'Finish paying'}</h2>
+            <p class="text-sm text-muted mt-1">
+              {order.payment_method === 'momo'
+                ? 'Tap below and a prompt pops up on your phone. Approve it with your MoMo PIN.'
+                : 'Your order goes to the kitchen as soon as the payment goes through.'}
+              {' '}Unpaid orders are cancelled after 30 minutes.
+            </p>
+          </div>
+          {inAppMomo ? (
+            <button type="button" data-momo-open class="btn btn-primary btn-lg w-full rounded-2xl">Pay {money(order.total)} with MoMo</button>
+          ) : (
+            <form method="post">
+              <input type="hidden" name="action" value="pay" />
+              <button type="submit" class="btn btn-primary btn-lg w-full">Pay {money(order.total)} with {paymentLabel}</button>
+            </form>
+          )}
+        </section>
+      )
+    }
+    {inAppMomo && <MomoPaySheet order={order} open={Astro.url.searchParams.get('pay') === '1'} />}
+
+    {
+      showCode && (
+        <section class="rounded-card bg-brand-tint border border-brand/40 p-5 flex flex-col sm:flex-row sm:items-center gap-4" aria-labelledby="code-h">
+          <div class="flex-1">
+            <h2 id="code-h" class="text-[0.9375rem] font-bold text-brand-ink">Delivery code</h2>
+            <p class="text-sm text-ink-soft mt-1 max-w-sm">
+              Give this code to the rider only after you have your food. Never share it on the phone or by message.
+            </p>
+          </div>
+          <p class="text-[2.75rem] leading-none font-extrabold tracking-[0.25em] tabular" aria-label={`Delivery code ${order.delivery_code.split('').join(' ')}`}>
+            {order.delivery_code}
+          </p>
+        </section>
+      )
+    }
+
+    <!-- Ticket -->
+    <section class="card relative" aria-label={`Order ${order.code}`}>
+      <div class="px-5 py-4 flex items-center justify-between gap-3">
+        <div class="flex flex-col gap-0.5">
+          <span class="text-[0.8125rem] font-semibold text-muted">Order number</span>
+          <span class="text-[1.375rem] font-extrabold tracking-[0.02em] tabular">{order.code}</span>
+        </div>
+        <span class:list={['badge h-7.5 px-3', badgeClass[order.status] ?? 'bg-brand-soft text-brand-ink']}>
+          {CUSTOMER_STATUS[order.status]}
+        </span>
+      </div>
+
+      <div class="relative mx-[18px] border-t-2 border-dashed border-line-strong" aria-hidden="true">
+        <span class="absolute -left-[29px] -top-[11px] size-5 rounded-full bg-paper border-r border-line"></span>
+        <span class="absolute -right-[29px] -top-[11px] size-5 rounded-full bg-paper border-l border-line"></span>
+      </div>
+
+      {
+        order.status !== 'cancelled' ? (
+          <ol class="px-5 pt-5 pb-2">
+            {timeline.map((step, i) => {
+              const reached = currentIdx >= idx(step.status);
+              const isCurrent = active && step.status === latestReached;
+              const done = reached && !isCurrent;
+              const at = eventAt(step.status);
+              const last = i === timeline.length - 1;
+              return (
+                <li class="flex gap-3.5" aria-current={isCurrent ? 'step' : undefined}>
+                  <div class="flex flex-col items-center">
+                    {done && (
+                      <span class="size-6 rounded-full bg-success text-paper flex items-center justify-center">
+                        <Icon name="check" size={14} strokeWidth={3} />
+                      </span>
+                    )}
+                    {isCurrent && <span class="live-ring size-6 rounded-full border-[7px] border-brand bg-surface"></span>}
+                    {!reached && <span class="size-6 rounded-full border-2 border-line-strong bg-surface"></span>}
+                    {!last && <span class:list={['w-0.5 h-8.5', done ? 'bg-success' : 'bg-line-strong']}></span>}
+                  </div>
+                  <div class:list={['flex justify-between gap-3 flex-1 pt-0.5', last && 'pb-3']}>
+                    <span
+                      class:list={[
+                        'text-[0.9375rem]',
+                        isCurrent ? 'font-extrabold text-brand-ink' : reached ? 'font-semibold' : 'font-semibold text-muted',
+                      ]}
+                    >
+                      {step.label}
+                    </span>
+                    {at && reached && <span class="text-sm text-muted tabular">{clock(at)}</span>}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p class="px-5 py-5 text-sm text-muted">
+            Cancelled on {dateTime(order.events[order.events.length - 1].at)}{order.cancel_reason ? `. Reason: ${order.cancel_reason}.` : '.'}
+          </p>
+        )
+      }
+    </section>
+
+    {
+      active && owner && (
+        <section class="card p-4 flex flex-col gap-3" aria-label="Your rider">
+          <div class="flex gap-3 items-center">
+            {rider?.photo_url ? (
+              <img src={rider.photo_url} alt={`Photo of ${rider.full_name}`} class="size-14 rounded-full object-cover shrink-0" />
+            ) : (
+              <span class="size-14 rounded-full bg-fill text-muted flex items-center justify-center shrink-0">
+                <Icon name="bike" size={24} />
+              </span>
+            )}
+            <div class="flex-1 min-w-0">
+              {rider && <p class="font-bold">{rider.full_name}</p>}
+              {rider && (
+                <p class="text-sm text-muted capitalize">
+                  {rider.vehicle}
+                  {rider.plate_number && <span class="normal-case">, plate {rider.plate_number}</span>}
+                </p>
+              )}
+              <p class:list={['text-sm leading-5 text-ink-soft', rider && 'mt-1']}>{riderNote}</p>
+            </div>
+          </div>
+          {rider && (
+            <div class="flex flex-wrap items-center gap-3">
+              <a href={`tel:${order.rider_phone}`} class="btn btn-secondary">
+                <Icon name="phone" size={18} /> Call rider
+              </a>
+              <p class="text-[0.8125rem] text-muted flex-1 min-w-48">Check the face and number plate match before you take your food.</p>
+            </div>
+          )}
+        </section>
+      )
+    }
+
+    <!-- Rating -->
+    {
+      owner && order.status === 'delivered' && order.rating === null && (
+        <form method="post" class="card p-4 flex flex-col gap-3">
+          <input type="hidden" name="action" value="rate" />
+          <fieldset>
+            <legend class="text-base font-extrabold mb-3">How was your food from {order.vendor_name}?</legend>
+            <div class="stars flex flex-row-reverse justify-end gap-1">
+              {[5, 4, 3, 2, 1].map((n) => (
+                <label class="cursor-pointer text-line-strong">
+                  <input type="radio" name="rating" value={n} class="sr-only" required />
+                  <span class="sr-only">{n} {n === 1 ? 'star' : 'stars'}</span>
+                  <Icon name="star" size={36} />
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <button type="submit" class="btn btn-primary self-start">Submit rating</button>
+        </form>
+      )
+    }
+    {
+      order.status === 'delivered' && order.rating !== null && (
+        <p class="card p-4 text-sm font-semibold flex items-center gap-2">
+          <Icon name="star" size={18} class="text-star" /> You rated this order {order.rating} out of 5. Thank you.
+        </p>
+      )
+    }
+
+  </div>
+
+  {owner && (
+  <div class="flex flex-col gap-4 lg:sticky lg:top-6">
+
+    <section class="card p-4 flex flex-col gap-2.5 text-[0.9375rem]" aria-labelledby="sum-h">
+      <div class="flex items-baseline justify-between gap-3">
+        <h2 id="sum-h" class="text-base font-extrabold">Order summary</h2>
+        <a href={`/vendors/${order.vendor_slug}`} class="text-sm font-bold text-brand no-underline">{order.vendor_name}</a>
+      </div>
+      {
+        order.items.map((item) => (
+          <div class="flex justify-between gap-3">
+            <span class="flex flex-col">
+              <span>
+                {item.quantity}× {item.name}
+              </span>
+              {item.options.length > 0 && <span class="text-[0.8125rem] text-muted">{item.options.map((o) => o.choice).join(', ')}</span>}
+            </span>
+            <span class="tabular whitespace-nowrap">{money(item.line_total)}</span>
+          </div>
+        ))
+      }
+      <div class="flex justify-between"><span class="text-muted">Delivery to {order.zone_name}</span><span class="tabular">{money(order.delivery_fee)}</span></div>
+      {order.discount > 0 && (
+        <div class="flex justify-between text-success font-semibold"><span>Promo {order.promo_code}</span><span class="tabular">-{money(order.discount)}</span></div>
+      )}
+      <div class="h-px bg-line my-1"></div>
+      <div class="flex justify-between font-extrabold">
+        <span>{order.payment_status === 'paid' ? `Paid with ${paymentLabel}` : `${paymentLabel}, to pay`}</span>
+        <span class="tabular">{money(order.total)}</span>
+      </div>
+      <div class="pt-2 mt-1 border-t border-line text-sm text-muted flex flex-col gap-1">
+        <span>Deliver to: {[order.delivery_landmark, order.delivery_address, order.locality_name, order.zone_name].filter(Boolean).join(', ')}</span>
+        <span>Phone: {prettyPhone(order.customer_phone)}</span>
+        {order.note && <span>Note: {order.note}</span>}
+        <span>Placed {dateTime(order.created_at)}</span>
+      </div>
+    </section>
+
+    <div class="flex flex-col gap-3">
+      <a href={`tel:${order.vendor_phone}`} class="btn btn-secondary btn-lg flex-1">
+        <Icon name="phone" size={18} /> Call the restaurant
+      </a>
+      {
+        (order.status === 'placed' || awaitingPayment) && (
+          <form
+            method="post"
+            class="flex-1 flex"
+            data-confirm="Cancel this order?"
+            data-confirm-message={awaitingPayment ? "You haven't paid for it, so nothing is charged." : "The restaurant hasn't started on it yet. If you paid online, you'll get a full refund."}
+            data-confirm-label="Cancel order"
+            data-confirm-danger="true"
+          >
+            <input type="hidden" name="action" value="cancel" />
+            <button type="submit" class="btn btn-secondary btn-lg flex-1 text-danger">Cancel order</button>
+          </form>
+        )
+      }
+      {
+        !active && (
+          <a href={`/vendors/${order.vendor_slug}`} class="btn btn-primary btn-lg flex-1">Order again</a>
+        )
+      }
+      <button type="button" data-report class="btn btn-ghost text-ink-soft">
+        <Icon name="alert" size={18} /> Report a problem
+      </button>
+    </div>
+  </div>
+  )}
+  </div>
+  </div>
+
+  {
+    owner && (
+      <dialog id="report-dialog" class="sheet" aria-labelledby="report-title">
+        <form method="post" class="p-6 flex flex-col gap-4">
+          <input type="hidden" name="action" value="report" />
+          <div>
+            <h2 id="report-title" class="text-lg font-extrabold">Report a problem</h2>
+            <p class="text-sm text-muted mt-1">About order {order.code}. Our team will call you back.</p>
+          </div>
+          <div>
+            <label for="report-category" class="field-label">What happened?</label>
+            <select id="report-category" name="category" class="field-input">
+              {ISSUE_CATEGORIES.customer.map((c) => <option>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label for="report-message" class="field-label">Details <span class="text-muted font-medium">(optional)</span></label>
+            <textarea id="report-message" name="message" rows="3" class="field-input" maxlength="600" placeholder="Tell us what went wrong"></textarea>
+          </div>
+          <p class="text-[0.8125rem] text-muted">
+            In danger or need help right now? Call us on <a href={`tel:${SITE.supportPhone}`} class="font-bold text-brand underline underline-offset-2 whitespace-nowrap tabular">{prettyPhone(SITE.supportPhone)}</a>.
+          </p>
+          <div class="flex gap-3">
+            <button type="button" data-close class="btn btn-secondary flex-1">Back</button>
+            <button type="submit" class="btn btn-primary flex-1">Send report</button>
+          </div>
+        </form>
+      </dialog>
+    )
+  }
+
+  <div id="order-state" data-active={active ? 'yes' : 'no'} data-placed={justPlaced || Astro.url.searchParams.get('pay') === '1' ? 'yes' : 'no'} data-live={live ? JSON.stringify(live) : undefined} hidden></div>
+</AppLayout>
+
+<style>
+  .stars label:hover,
+  .stars label:hover ~ label,
+  .stars label:has(input:checked),
+  .stars label:has(input:checked) ~ label {
+    color: var(--color-star);
+  }
+  .stars label:has(input:focus-visible) {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+</style>
+
+<script>
+  import { clearCart } from '../../lib/cart';
+  import { forgetPromo } from '../../lib/promo';
+
+  document.querySelector('[data-report]')?.addEventListener('click', () => {
+    (document.getElementById('report-dialog') as HTMLDialogElement | null)?.showModal();
+  });
+
+  const state = document.getElementById('order-state')!;
+  if (state.dataset.placed === 'yes') {
+    clearCart();
+    forgetPromo(); // promo codes are for the first order, and that's now done
+    history.replaceState(null, '', window.location.pathname);
+  }
+  // Android app: keep this order on the lock screen until it's delivered.
+  // The app ignores finished orders it isn't already tracking.
+  const native = (window as unknown as { RBNative?: { trackOrder?: (json: string) => void } }).RBNative;
+  if (state.dataset.live && typeof native?.trackOrder === 'function') {
+    try {
+      native.trackOrder(state.dataset.live);
+    } catch {
+      /* older app without the tracker */
+    }
+  }
+  // Refresh while the order is in progress (Supabase Realtime will replace this).
+  if (state.dataset.active === 'yes') {
+    window.setInterval(() => {
+      if (document.visibilityState === 'visible' && !document.querySelector('dialog[open]')) window.location.reload();
+    }, 15000);
+  }
+</script>

@@ -1,0 +1,80 @@
+---
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import BarChart from '../../components/panel/BarChart.astro';
+import StatTile from '../../components/panel/StatTile.astro';
+import RangePicker from '../../components/panel/RangePicker.astro';
+import { parseRange, riderInsights } from '../../data/insights';
+import { getRider } from '../../data/partners';
+import { dateTime, money } from '../../lib/format';
+import Icon from '../../components/Icon.astro';
+
+const account = Astro.locals.partner!;
+const range = parseRange(Astro.url.searchParams.get('range'));
+const s = await riderInsights(account.rider_id!, range);
+const rider = await getRider(account.rider_id);
+const deliveredAt = (o: (typeof s.list)[number]) => o.events.find((e) => e.status === 'delivered')?.at ?? o.created_at;
+---
+
+<PanelLayout title="Earnings">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Earnings</h1>
+      <p class="text-sm text-muted mt-1">You earn the delivery fee on every completed delivery.</p>
+    </div>
+    <RangePicker current={range} />
+  </div>
+
+  <dl class="mt-6 grid gap-3 grid-cols-2 xl:grid-cols-4">
+    <StatTile label="You earned" value={money(s.earnings)} change={s.earningsChange} compare={s.compareLabel} />
+    <StatTile label="Deliveries" value={String(s.deliveries)} change={s.deliveriesChange} compare={s.compareLabel} />
+    <StatTile label="Cash collected" value={money(s.cashCollected)} hint="From cash orders. Settle it with Relax&Bite." />
+    <StatTile
+      label="Average delivery time"
+      value={s.avgRide === null ? '—' : `${Math.round(s.avgRide)} min`}
+      hint={rider && rider.rating > 0 ? `Your rating: ${rider.rating.toFixed(1)}` : 'From pickup to the customer'}
+    />
+  </dl>
+
+  <section class="card p-5 mt-6 flex flex-col gap-4" aria-labelledby="earn-h">
+    <h2 id="earn-h" class="font-extrabold">{range === 'today' ? 'Earnings by hour today' : 'Earnings by day'}</h2>
+    <BarChart title={range === 'today' ? 'Earnings by hour today' : 'Earnings by day'} bars={s.chart} valueLabel="Earnings" />
+  </section>
+
+  <section class="card mt-6 overflow-hidden" aria-labelledby="list-h">
+    <div class="px-5 py-4 border-b border-line flex items-center justify-between gap-3">
+      <h2 id="list-h" class="font-extrabold">Deliveries ({s.list.length})</h2>
+    </div>
+    {
+      s.list.length === 0 ? (
+        <p class="p-5 text-sm text-muted flex items-center gap-2"><Icon name="bike" size={18} /> No deliveries in this period yet.</p>
+      ) : (
+        <div class="overflow-x-auto max-h-[28rem] overflow-y-auto">
+          <table class="w-full text-sm rtable">
+            <thead class="bg-paper text-left text-muted sticky top-0">
+              <tr>
+                <th class="px-5 py-3 font-semibold">Order</th>
+                <th class="px-5 py-3 font-semibold">From</th>
+                <th class="px-5 py-3 font-semibold">To</th>
+                <th class="px-5 py-3 font-semibold">Delivered</th>
+                <th class="px-5 py-3 font-semibold">Payment</th>
+                <th class="px-5 py-3 font-semibold text-right">You earned</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-line">
+              {s.list.map((o) => (
+                <tr>
+                  <td class="px-5 py-3 font-bold tabular whitespace-nowrap">{o.code}</td>
+                  <td class="px-5 py-3 whitespace-nowrap">{o.vendor_name}</td>
+                  <td class="px-5 py-3 whitespace-nowrap">{[o.locality_name, o.zone_name].filter(Boolean).join(', ')}</td>
+                  <td class="px-5 py-3 whitespace-nowrap text-muted">{dateTime(deliveredAt(o))}</td>
+                  <td class="px-5 py-3 whitespace-nowrap">{o.payment_method === 'cash' ? `Cash ${money(o.total)}` : 'Online'}</td>
+                  <td class="px-5 py-3 text-right font-bold tabular">{money(o.delivery_fee)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    }
+  </section>
+</PanelLayout>

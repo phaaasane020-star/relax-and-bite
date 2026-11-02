@@ -1,0 +1,38 @@
+---
+// Light or dark, saved on this device. Used on the Account pages.
+import Icon from './Icon.astro';
+import { THEME_COOKIE, themeFromCookie } from '../lib/theme';
+interface Props {
+  class?: string;
+}
+const theme = themeFromCookie(Astro.cookies.get(THEME_COOKIE)?.value);
+const options = [
+  { value: 'light', label: 'Light', icon: 'sun' },
+  { value: 'dark', label: 'Dark', icon: 'moon' },
+] as const;
+---
+
+<fieldset class:list={['theme-switch', Astro.props.class]} data-theme-switch>
+  <legend class="text-sm font-semibold text-muted mb-2">Appearance</legend>
+  <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-fill">
+    {
+      options.map((o) => (
+        <label class="h-10 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold text-muted cursor-pointer has-[:checked]:bg-surface has-[:checked]:text-ink has-[:checked]:shadow-sm has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-brand">
+          <input type="radio" name="theme" value={o.value} checked={theme === o.value} class="sr-only" />
+          <Icon name={o.icon} size={18} />
+          {o.label}
+        </label>
+      ))
+    }
+  </div>
+</fieldset>
+
+<script>
+  import { applyTheme, type Theme } from '../lib/theme';
+  document.querySelectorAll<HTMLElement>('[data-theme-switch]').forEach((box) => {
+    box.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      if (input.name === 'theme') applyTheme(input.value as Theme);
+    });
+  });
+</script>

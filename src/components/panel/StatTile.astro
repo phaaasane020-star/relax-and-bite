@@ -1,0 +1,33 @@
+---
+// A headline number with an optional change versus the previous period.
+interface Props {
+  label: string;
+  value: string;
+  change?: number | null;
+  compare?: string;
+  hint?: string;
+}
+const { label, value, change, compare, hint } = Astro.props;
+const up = change !== null && change !== undefined && change > 0;
+const down = change !== null && change !== undefined && change < 0;
+---
+
+<div class="card p-4 sm:p-5 flex flex-col gap-1 min-w-0">
+  <dt class="text-sm font-semibold text-muted">{label}</dt>
+  <dd class="text-xl sm:text-2xl font-extrabold tabular tracking-tight break-words">{value}</dd>
+  {
+    change !== undefined && change !== null && (
+      <dd class="text-[0.8125rem] text-muted">
+        {(
+          <span>
+            <span class:list={['font-bold', up && 'text-success', down && 'text-danger']}>
+              {up ? '▲' : down ? '▼' : ''} {change === 0 ? 'Same' : `${Math.abs(change)}%`}
+            </span>{' '}
+            {change === 0 ? 'as' : up ? 'more than' : 'less than'} {compare}
+          </span>
+        )}
+      </dd>
+    )
+  }
+  {hint && <dd class="text-[0.8125rem] text-muted">{hint}</dd>}
+</div>

@@ -1,0 +1,25 @@
+---
+// The delivery towns as tiles to tap. Sends the chosen town as zone_id.
+// Nothing is chosen until the person picks a town.
+import Icon from './Icon.astro';
+import type { Zone } from '../data/types';
+interface Props {
+  zones: Zone[];
+  zoneId?: number | null;
+}
+const { zones } = Astro.props;
+---
+
+<fieldset class="grid grid-cols-2 gap-2.5" data-town-choice>
+  <legend class="sr-only">Town</legend>
+  {
+    zones.map((z) => (
+      <label class="town-tile">
+        <input type="radio" name="zone_id" value={z.id} class="sr-only" />
+        <span class="town-tile-name">{z.name}</span>
+        <span class="town-tile-region">{z.region} Region</span>
+        <Icon name="check" size={16} strokeWidth={3} class="town-tile-check" />
+      </label>
+    ))
+  }
+</fieldset>

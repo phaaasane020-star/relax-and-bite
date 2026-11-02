@@ -1,0 +1,283 @@
+---
+// Shell for the vendor, rider and admin panels: side menu on desktop,
+// top bar with scrolling tabs on phones.
+import BaseLayout from './BaseLayout.astro';
+import Logo from '../components/Logo.astro';
+import Copyright from '../components/Copyright.astro';
+import BackButton from '../components/BackButton.astro';
+import Icon from '../components/Icon.astro';
+import NotifyPrompt from '../components/panel/NotifyPrompt.astro';
+import { getPanelCounts, recentAlerts } from '../data/store';
+import { getVendorForAccount } from '../data/partners';
+import { countOpenWithdrawals } from '../data/wallet';
+import { countWaitingChats } from '../data/support';
+
+interface Props {
+  title: string;
+  /** Reload the page every N seconds to pick up new orders (0 = off) */
+  refresh?: number;
+}
+const { title, refresh = 0 } = Astro.props;
+const account = Astro.locals.partner!;
+const path = Astro.url.pathname;
+
+type NavItem = { href: string; label: string; short?: string; match?: string[]; icon: 'receipt' | 'dish' | 'store' | 'bike' | 'home' | 'user' | 'pin' | 'alert' | 'chart' | 'shield' | 'tag' | 'wallet' | 'chat' | 'menu'; badge?: number;
+  /** false: side menu only, not the phone tab bar (reached from another page there) */
+  tabbar?: boolean };
+
+const isAdmin = account.role === 'admin';
+const [vendor, counts, alerts] = await Promise.all([
+  account.role === 'vendor' ? getVendorForAccount(account) : Promise.resolve(undefined),
+  getPanelCounts(account.vendor_id),
+  isAdmin ? recentAlerts(40) : Promise.resolve([]),
+]);
+const { newOrders, pendingApps, openIssues } = counts;
+const [openPayouts, waitingChats] = isAdmin ? await Promise.all([countOpenWithdrawals(), countWaitingChats()]) : [0, 0];
+
+// Admin only: failed sign-ins and lockouts in the last 24 hours, and the
+// latest important events for the pop-up alerts
+const recentSecurity = isAdmin ? counts.failedSignins24h : 0;
+const adminSnapshot = isAdmin
+  ? JSON.stringify(
+      Object.fromEntries(alerts.map((a) => [`${a.at}|${a.actor}`, { status: a.kind, rider: '', info: `${a.actor}: ${a.action}` }])),
+    ).replace(/</g, '\\u003c')
+  : '';
+
+const nav: NavItem[] =
+  account.role === 'vendor'
+    ? [
+        { href: '/vendor', label: 'Orders', icon: 'receipt', badge: newOrders },
+        { href: '/vendor/insights', label: 'Sales', icon: 'chart' },
+        { href: '/vendor/wallet', label: 'Wallet', icon: 'wallet' },
+        { href: '/vendor/menu', label: 'Menu', icon: 'dish' },
+        { href: '/vendor/settings', label: 'Store settings', short: 'Store', icon: 'store' },
+      ]
+    : account.role === 'rider'
+      ? [
+          { href: '/rider', label: 'Deliveries', icon: 'bike' },
+          { href: '/rider/wallet', label: 'Wallet', icon: 'wallet' },
+          { href: '/rider/history', label: 'Earnings', icon: 'chart' },
+        ]
+      : [
+          { href: '/admin', label: 'Overview', short: 'Home', icon: 'home' },
+          { href: '/admin/orders', label: 'Orders', icon: 'receipt' },
+          {
+            href: '/admin/applications',
+            label: 'Partners',
+            icon: 'user',
+            badge: pendingApps,
+            match: ['/admin/applications', '/admin/vendors', '/admin/riders', '/admin/admins'],
+          },
+          { href: '/admin/payouts', label: 'Payouts', short: 'Money', icon: 'wallet', badge: openPayouts },
+          { href: '/admin/support', label: 'Support chats', short: 'Support', icon: 'chat', badge: waitingChats, tabbar: false },
+          { href: '/admin/issues', label: 'Reports', icon: 'alert', badge: openIssues, tabbar: false },
+          { href: '/admin/zones', label: 'Delivery areas', short: 'Areas', icon: 'pin', tabbar: false },
+          { href: '/admin/promos', label: 'Promo codes', short: 'Promos', icon: 'tag', tabbar: false },
+          { href: '/admin/activity', label: 'Security and activity', short: 'Activity', icon: 'shield', badge: recentSecurity, tabbar: false },
+        ];
+
+// Phones: the admin tab bar keeps 5 tabs; everything else is under "More"
+const moreItems = isAdmin ? nav.filter((n) => n.tabbar === false) : [];
+const moreBadge = moreItems.reduce((n, i) => n + (i.badge ?? 0), 0);
+
+const tabs: NavItem[] = [
+  ...nav.filter((n) => n.tabbar !== false),
+  ...(isAdmin ? [{ href: '/admin/more', label: 'More', icon: 'menu' as const, badge: moreBadge, match: ['/admin/more', ...moreItems.map((m) => m.href)] }] : []),
+];
+const root = nav[0].href;
+const isActive = (href: string) => {
+  const item = nav.find((n) => n.href === href) ?? tabs.find((n) => n.href === href);
+  if (item?.match) return item.match.some((m) => path === m || path.startsWith(`${m}/`));
+  return href === root ? path === root : path === href || path.startsWith(`${href}/`);
+};
+const onRoot = path === root || path === `${root}/`;
+const rootLabel = `Back to ${nav[0].label.toLowerCase()}`;
+const accountHref = `${root}/account`;
+const onAccount = path === accountHref;
+const subtitle = account.role === 'vendor' ? vendor?.name ?? 'Your store' : account.role === 'rider' ? 'Rider' : 'Admin';
+---
+
+<BaseLayout title={title}>
+  <div class="panel-ui min-h-dvh lg:flex">
+    <!-- Desktop side menu -->
+    <aside class="vt-sidebar hidden lg:flex w-64 shrink-0 flex-col gap-6 bg-surface border-r border-line px-4 py-5 sticky top-0 h-dvh">
+      <div class="px-2 flex items-center justify-between gap-2"><Logo /></div>
+      <div class="px-2">
+        <p class="font-bold truncate">{subtitle}</p>
+        <p class="text-sm text-muted truncate">{account.full_name}</p>
+      </div>
+      <nav aria-label="Panel" class="flex flex-col gap-0.5">
+        {
+          nav.map((item) => (
+            <a
+              href={item.href}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+              class:list={[
+                'h-11 px-3 rounded-lg flex items-center gap-3 no-underline text-[0.9375rem]',
+                isActive(item.href) ? 'bg-brand-soft text-brand-ink font-bold' : 'text-ink-soft font-semibold hover:bg-paper',
+              ]}
+            >
+              <Icon name={item.icon} size={20} />
+              <span class="flex-1">{item.label}</span>
+              {item.badge ? <span class="min-w-6 h-6 px-1.5 rounded-full bg-brand text-on-brand text-xs font-bold flex items-center justify-center">{item.badge}</span> : null}
+            </a>
+          ))
+        }
+      </nav>
+      <a
+        href={accountHref}
+        aria-current={onAccount ? 'page' : undefined}
+        class:list={[
+          'mt-auto h-14 px-3 rounded-lg flex items-center gap-3 no-underline hover:bg-paper',
+          onAccount ? 'bg-brand-soft text-brand' : 'text-ink',
+        ]}
+      >
+        <span class="size-9 rounded-full bg-fill flex items-center justify-center shrink-0"><Icon name="user" size={18} /></span>
+        <span class="flex flex-col min-w-0 leading-tight">
+          <span class="font-bold truncate">{account.full_name}</span>
+          <span class="text-xs text-muted">Your account</span>
+        </span>
+      </a>
+      <form method="post" action="/partner/logout" data-confirm="Sign out?" data-confirm-label="Sign out">
+        <button type="submit" class="h-11 w-full px-3 rounded-lg flex items-center gap-3 text-[0.9375rem] font-semibold text-ink-soft hover:bg-paper">
+          <Icon name="logout" size={20} /> Sign out
+        </button>
+      </form>
+    </aside>
+
+    <div class="flex-1 min-w-0 flex flex-col">
+      <!-- Phone top bar -->
+      <header class="vt-header scroll-shadow lg:hidden sticky top-0 z-20 bg-surface border-b border-line pt-[var(--sat)]">
+        <div class="px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2 min-w-0">
+            {onRoot ? <Logo size="sm" /> : <BackButton href={root} label={rootLabel} />}
+            <span class="text-sm font-semibold text-muted truncate border-l border-line pl-2">{subtitle}</span>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <a href={accountHref} class:list={['icon-btn border-0', onAccount && 'text-brand']} aria-label="Your account" aria-current={onAccount ? 'page' : undefined}>
+              <Icon name="user" size={20} />
+            </a>
+          </div>
+        </div>
+      </header>
+
+      <NotifyPrompt />
+      <main data-refresh-area class="flex-1 w-full max-w-[96rem] px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:py-8">
+        {!onRoot && <BackButton href={root} label={rootLabel} class="hidden lg:inline-flex mb-4" />}
+        {path === '/admin/more' ? (
+          <>
+            <h1 class="text-2xl font-extrabold tracking-tight">More</h1>
+            <ul class="card mt-5 divide-y divide-line overflow-hidden">
+              {moreItems.map((m) => (
+                <li>
+                  <a href={m.href} class="flex items-center gap-4 px-4 py-4 no-underline text-ink hover:bg-fill">
+                    <span class="size-11 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0"><Icon name={m.icon} size={22} /></span>
+                    <span class="flex-1 font-bold text-[1.0625rem]">{m.label}</span>
+                    {m.badge ? <span class="min-w-6 h-6 px-1.5 rounded-full bg-brand text-on-brand text-xs font-bold flex items-center justify-center">{m.badge}</span> : null}
+                    <Icon name="chevron-right" size={20} class="text-faint" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <slot />
+        )}
+        {onAccount && (
+          <form method="post" action="/partner/logout" data-confirm="Sign out?" data-confirm-label="Sign out" class="lg:hidden mt-8">
+            <button type="submit" class="btn btn-secondary btn-lg w-full text-danger"><Icon name="logout" size={20} /> Sign out</button>
+          </form>
+        )}
+        <Copyright class="mt-12 pt-5 border-t border-line" row />
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Phone and tablet tab bar -->
+  <nav
+    aria-label="Panel"
+    class="vt-tabbar lg:hidden fixed inset-x-0 bottom-0 z-30 bg-surface border-t border-line grid pb-[var(--sab)]"
+    style={`grid-template-columns: repeat(${tabs.length}, minmax(0, 1fr))`}
+  >
+    {
+      tabs.map((item) => (
+        <a
+          href={item.href}
+          aria-current={isActive(item.href) ? 'page' : undefined}
+          class:list={[
+            'relative h-16 flex flex-col items-center justify-center gap-1 text-[0.6875rem] min-[380px]:text-xs no-underline',
+            isActive(item.href) ? 'text-brand font-bold' : 'text-muted font-semibold',
+          ]}
+        >
+          <span class="nav-pill relative">
+            <Icon name={item.icon} size={24} />
+            {item.badge ? (
+              <span class="absolute -top-1 right-2 min-w-4.5 h-4.5 px-1 rounded-full bg-brand text-on-brand text-[0.625rem] font-bold flex items-center justify-center">{item.badge}</span>
+            ) : null}
+          </span>
+          <span class="truncate max-w-full px-1">{item.short ?? item.label}</span>
+        </a>
+      ))
+    }
+  </nav>
+
+  <!-- Tables become stacked cards on phones: copy each column heading onto its cells -->
+  <script is:inline>
+    document.querySelectorAll('table.rtable').forEach(function (t) {
+      var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) {
+        return th.querySelector('.sr-only') ? '' : th.textContent.trim();
+      });
+      t.querySelectorAll('tbody tr').forEach(function (tr) {
+        Array.prototype.forEach.call(tr.children, function (td, i) {
+          if (!td.hasAttribute('data-label')) td.setAttribute('data-label', heads[i] || '');
+        });
+      });
+    });
+  </script>
+
+  <div id="panel-refresh" data-seconds={refresh} hidden></div>
+  {isAdmin && <script type="application/json" id="admin-snapshot" set:html={adminSnapshot}></script>}
+</BaseLayout>
+
+<script>
+  import { announce, collectAlerts, type Snapshot } from '../lib/panel-alerts';
+  import { quietReload } from '../lib/skeleton';
+
+  // Admin: pop-up and sound for failed sign-ins, lockouts, new applications and reports
+  const adminData = document.getElementById('admin-snapshot');
+  if (adminData) {
+    const snap = JSON.parse(adminData.textContent || '{}') as Snapshot;
+    announce(
+      collectAlerts('rb_admin_snap', snap, (_key, before, after) => {
+        if (before) return null;
+        if (after.status === 'lockout') return { tone: 'warn', text: `Account locked. ${after.info}` };
+        if (after.status === 'signin_failed') return { tone: 'warn', text: `Failed sign-in. ${after.info}` };
+        if (after.status === 'register') return { tone: 'new', text: `New application. ${after.info}` };
+        if (after.status === 'report') return { tone: 'info', text: `New report. ${after.info}` };
+        if (after.status === 'signin') return { tone: 'info', text: `Admin sign-in. ${after.info}` };
+        return null;
+      }),
+    );
+  }
+
+  // Pick up new orders without realtime yet (Supabase Realtime replaces this).
+  const el = document.getElementById('panel-refresh');
+  const seconds = Number(el?.dataset.seconds || 0);
+  // A form someone has started changing (for example picking a rider) isn't thrown away
+  let unsaved = false;
+  document.addEventListener('change', (e) => {
+    if ((e.target as Element | null)?.closest('form')) unsaved = true;
+  });
+  document.addEventListener('submit', () => (unsaved = false));
+  if (seconds > 0) {
+    window.setInterval(() => {
+      const busy =
+        unsaved ||
+        document.visibilityState !== 'visible' ||
+        document.querySelector('dialog[open], details[open]') ||
+        (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName));
+      if (!busy) quietReload();
+    }, seconds * 1000);
+  }
+</script>

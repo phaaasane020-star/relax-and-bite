@@ -1,0 +1,20 @@
+---
+// Your account: change the name on the account and the password.
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import AccountSettings from '../../components/panel/AccountSettings.astro';
+import { handleAccountForm } from '../../lib/account-form';
+import { takeFlash } from '../../lib/actions';
+
+const account = Astro.locals.partner!;
+let error = '';
+if (Astro.request.method === 'POST') {
+  const result = await handleAccountForm(Astro, account);
+  if (result instanceof Response) return result;
+  error = result.error;
+}
+const success = takeFlash(Astro.cookies);
+---
+
+<PanelLayout title="Your account">
+  <AccountSettings account={account} error={error} success={success} />
+</PanelLayout>

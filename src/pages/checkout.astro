@@ -1,0 +1,543 @@
+---
+import { clientInfo } from '../lib/client-info';
+import AppLayout from '../layouts/AppLayout.astro';
+import TopBar from '../components/TopBar.astro';
+import Icon from '../components/Icon.astro';
+import LocalityPicker from '../components/LocalityPicker.astro';
+import { audit, createOrder, getVendors, getZones, startPayment, tidyPromo } from '../data/store';
+import { addMyOrder, getLocation, getUser, setLocation } from '../lib/session';
+import { getCustomer } from '../data/customers';
+import { SITE } from '../data/site';
+import { money, prettyPhone } from '../lib/format';
+import { flash } from '../lib/actions';
+import type { PaymentMethod } from '../data/types';
+
+const zones = await getZones();
+const loc = getLocation(Astro.cookies);
+const user = getUser(Astro.cookies);
+// Ordering needs an account: sign in first, then come straight back here
+if (!user) return Astro.redirect('/login?next=/checkout');
+// The number they used last time, filled in for them
+const account = await getCustomer(user.id);
+
+let error = '';
+let values = {
+  zoneId: loc?.zoneId ?? zones[0].id,
+  localityId: loc?.localityId ?? null,
+  area: loc?.area ?? '',
+  landmark: loc?.landmark ?? '',
+  details: loc?.details ?? '',
+  phone: account?.phone ?? user.phone ?? '',
+  note: '',
+  payment: 'momo' as PaymentMethod,
+  promo: '',
+};
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const text = (k: string) => String(form.get(k) ?? '').slice(0, 300);
+  values = {
+    zoneId: Number(form.get('zone_id')),
+    localityId: Number(form.get('locality_id')) || null,
+    area: text('locality_other'),
+    landmark: text('landmark'),
+    details: text('details'),
+    phone: text('phone'),
+    note: text('note'),
+    payment: text('payment_method') as PaymentMethod,
+    promo: tidyPromo(text('promo_code')),
+  };
+  try {
+    const cart = JSON.parse(String(form.get('cart_json') || 'null'));
+    if (!cart || !Array.isArray(cart.lines) || cart.lines.length === 0) throw new Error('Your cart is empty.');
+    const order = await createOrder({
+      vendorId: String(cart.vendorId),
+      lines: cart.lines.map((l: { itemId: string; qty: number; options?: { group: string; choice: string }[] }) => ({
+        itemId: String(l.itemId),
+        qty: Number(l.qty),
+        options: (l.options ?? []).map((o) => ({ group: String(o.group), choice: String(o.choice) })),
+      })),
+      zoneId: values.zoneId,
+      localityId: values.localityId,
+      area: values.area,
+      landmark: values.landmark,
+      details: values.details,
+      phone: values.phone,
+      note: values.note,
+      paymentMethod: values.payment,
+      customerId: user.id,
+      promoCode: values.promo,
+    });
+    addMyOrder(Astro.cookies, order.code);
+    await audit(
+      `Customer ${user.email} (${prettyPhone(order.customer_phone)})`,
+      `Placed ${order.code} at ${order.vendor_name}, ${order.payment_method === 'cash' ? 'cash' : order.status === 'pending_payment' ? 'paying online' : 'paid online'}, GH₵ ${order.total.toFixed(2)}${order.promo_code ? `, promo ${order.promo_code} (GH₵ ${order.discount.toFixed(2)} off)` : ''}`,
+      { kind: 'order', ...clientInfo(Astro) },
+    );
+    setLocation(Astro.cookies, { zoneId: values.zoneId, localityId: values.localityId, area: values.localityId ? '' : values.area.trim(), landmark: values.landmark.trim(), details: values.details.trim() });
+    if (order.status === 'pending_payment' && order.payment_method === 'momo') {
+      // Mobile Money: the prompt is sent from the order page, without leaving the app
+      return Astro.redirect(`/orders/${order.code}?pay=1`, 303);
+    }
+    if (order.status === 'pending_payment') {
+      // Card: off to Paystack's secure card page; they come back to /pay/return
+      try {
+        return Astro.redirect(await startPayment(order.code, Astro.url.origin), 303);
+      } catch (e) {
+        flash(Astro.cookies, e instanceof Error ? `${e.message} Your order is saved: try paying again below.` : "Couldn't open the payment page. Try again below.");
+        return Astro.redirect(`/orders/${order.code}`, 303);
+      }
+    }
+    return Astro.redirect(`/orders/${order.code}?placed=1`, 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+// Each restaurant's own delivery fee (the order uses the one saved on the restaurant)
+const vendorFees = JSON.stringify(Object.fromEntries((await getVendors()).map((v) => [v.id, v.delivery_fee])));
+const payments: { value: PaymentMethod; title: string; icon: 'wallet' | 'card' | 'cash' }[] = [
+  { value: 'momo', title: 'MoMo', icon: 'wallet' },
+  { value: 'card', title: 'Card', icon: 'card' },
+  { value: 'cash', title: 'Cash', icon: 'cash' },
+].filter((p) => p.value !== 'cash' || SITE.cashOnDelivery);
+const payHint: Record<PaymentMethod, string> = {
+  momo: 'MTN, Telecel or AirtelTigo. Approve the prompt on your phone.',
+  card: 'Visa or Mastercard.',
+  cash: 'Pay the rider when your food arrives.',
+};
+// "Deliver to" line: town and landmark; the fields open when something is missing
+const zoneName = zones.find((z) => z.id === values.zoneId)?.name ?? '';
+const addressLine = [values.landmark, values.area, zoneName].filter(Boolean).join(', ');
+const openAddress = Boolean(error) || !values.landmark || !values.phone;
+---
+
+<AppLayout title="Checkout" mobileHeader="none" nav={false}>
+  <TopBar title="Checkout" back="/cart" backLabel="Back to cart" />
+
+  <form method="post" id="checkout-form" class="container-app max-w-xl pt-4 pb-40 lg:pb-16 flex flex-col gap-3.5" novalidate>
+    <input type="hidden" name="cart_json" />
+
+    {
+      error && (
+        <div role="alert" data-form-error class="flex gap-3 items-start p-4 rounded-2xl bg-danger-soft text-danger">
+          <Icon name="alert" size={20} class="shrink-0 mt-0.5" />
+          <p class="text-sm font-semibold">{error}</p>
+        </div>
+      )
+    }
+
+    <!-- Deliver to -->
+    <section class="co-card" aria-labelledby="deliver-h">
+      <div class="flex items-center gap-3.5">
+        <span class="co-icon"><Icon name="pin" size={22} /></span>
+        <div class="flex-1 min-w-0">
+          <h2 id="deliver-h" class="font-extrabold">Deliver to</h2>
+          <p class="text-sm text-muted truncate" data-address-line>{addressLine || 'Add where the rider should come'}</p>
+          <p class="text-sm text-muted truncate" data-phone-line hidden={!values.phone}>Rider calls <span class="tabular">{values.phone ? prettyPhone(values.phone) : ''}</span></p>
+        </div>
+        <button type="button" data-address-toggle class="co-pill" aria-expanded={openAddress ? 'true' : 'false'} aria-controls="address-fields">{openAddress ? 'Done' : 'Change'}</button>
+      </div>
+      <div id="address-fields" data-address-fields hidden={!openAddress} class="mt-4 pt-4 border-t border-line flex flex-col gap-4">
+        <LocalityPicker zones={zones} zoneId={values.zoneId} localityId={values.localityId} area={values.area} allowOther idPrefix="deliver" locate />
+        <div>
+          <label for="landmark" class="field-label">Landmark</label>
+          <input id="landmark" name="landmark" class="field-input" required value={values.landmark} placeholder="For example, blue gate opposite the pharmacy" autocomplete="address-line1" />
+        </div>
+        <div>
+          <label for="details" class="field-label">House number or GhanaPost GPS <span class="text-muted font-medium">(optional)</span></label>
+          <input id="details" name="details" class="field-input" value={values.details} placeholder="For example, CA-0123-4567" autocomplete="address-line2" />
+        </div>
+        <div>
+          <label for="phone" class="field-label">Phone number</label>
+          <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" class="field-input" required value={values.phone} placeholder="024 123 4567" />
+          <p class="field-hint">The rider calls this number when they arrive.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Your order -->
+    <section class="co-card" aria-labelledby="order-h">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h2 id="order-h" class="font-extrabold">Your order</h2>
+          <p data-vendor class="text-sm text-muted truncate"></p>
+        </div>
+        <a href="/" data-add-items class="co-pill no-underline">Add items</a>
+      </div>
+      <ul data-lines class="mt-3 flex flex-col divide-y divide-line"></ul>
+      <div class="pt-3 border-t border-line">
+        <button type="button" data-note-toggle class="text-sm font-bold text-brand" hidden={Boolean(values.note)}>+ Add a note for the kitchen</button>
+        <div data-note-field hidden={!values.note}>
+          <label for="note" class="field-label">Note for the kitchen</label>
+          <input id="note" name="note" class="field-input" value={values.note} placeholder="For example, less pepper" maxlength="200" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Payment and promo -->
+    <section class="co-card !p-0 overflow-hidden" aria-labelledby="pay-h">
+      <fieldset class="p-4 sm:p-5">
+        <legend id="pay-h" class="sr-only">Payment</legend>
+        <div class="flex items-center gap-3 mb-3">
+          <Icon name="card" size={22} class="text-brand" />
+          <span class="font-extrabold">Payment</span>
+        </div>
+        <div class="grid grid-flow-col auto-cols-fr gap-2" data-pay-grid>
+          {
+            payments.map((p) => (
+              <label data-pay-option={p.value} class="co-pay">
+                <input type="radio" name="payment_method" value={p.value} checked={values.payment === p.value} data-cash={p.value === 'cash' ? 'yes' : undefined} class="sr-only" />
+                <Icon name={p.icon} size={22} />
+                <span class="text-[0.8125rem] font-bold leading-tight text-center">{p.title}</span>
+              </label>
+            ))
+          }
+        </div>
+        <p class="text-[0.8125rem] text-muted mt-2.5" data-pay-hint>{payHint[values.payment] ?? payHint.momo}</p>
+        <p data-cash-note hidden class="flex items-center gap-2 text-[0.8125rem] text-muted mt-1">
+          <Icon name="info" size={16} class="shrink-0" />
+          <span>Cash is for orders up to GH₵ {SITE.cashLimit}.</span>
+        </p>
+      </fieldset>
+
+      <div class="px-4 sm:px-5 py-4 border-t border-line" data-promo>
+        <input type="hidden" name="promo_code" value={values.promo} />
+        <div data-promo-entry class="flex items-center gap-3">
+          <Icon name="tag" size={22} class="text-brand shrink-0" />
+          <label for="promo" class="font-extrabold shrink-0 max-[380px]:sr-only">Promo</label>
+          <input id="promo" class="field-input !min-h-10 !py-2 flex-1 min-w-0 uppercase placeholder:normal-case" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="24" placeholder="Enter code" value={values.promo} />
+          <button type="button" data-promo-apply class="btn btn-primary !min-h-10 px-4 shrink-0">Apply</button>
+        </div>
+        <p data-promo-msg class="text-sm font-semibold text-danger mt-2" role="alert" hidden></p>
+        <a data-promo-signin href="/login?next=/checkout" data-open="auth" class="inline-block text-sm font-bold text-brand mt-1" hidden>Sign in</a>
+        <div data-promo-done class="flex items-center justify-between gap-3 px-3.5 py-3 rounded-xl bg-success-soft" hidden>
+          <span class="flex items-center gap-2.5 text-sm min-w-0">
+            <Icon name="check" size={18} class="text-success shrink-0" />
+            <span><strong data-promo-code></strong> applied: <span data-promo-off></span> off</span>
+          </span>
+          <button type="button" data-promo-remove class="text-sm font-bold text-ink-soft shrink-0 hover:text-ink">Remove</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Totals -->
+    <section class="co-card flex flex-col gap-2.5 text-[0.9375rem]" aria-label="Total">
+      <div class="flex justify-between"><span class="text-muted">Subtotal</span><span data-subtotal class="tabular font-semibold"></span></div>
+      <div class="flex justify-between"><span class="text-muted" data-fee-label>Delivery</span><span data-fee class="tabular font-semibold"></span></div>
+      <div class="flex justify-between text-success font-semibold" data-discount-row hidden><span>Promo <span data-discount-code></span></span><span data-discount class="tabular"></span></div>
+      <div class="h-px bg-line my-1"></div>
+      <div class="flex justify-between text-lg font-extrabold"><span>Total</span><span data-total class="tabular"></span></div>
+    </section>
+
+    <div class="fixed lg:static inset-x-0 bottom-0 z-30 bg-surface/95 lg:bg-transparent backdrop-blur border-t border-line lg:border-0">
+      <div class="container-app max-w-xl lg:px-0 pt-3 lg:pt-1 pb-[max(1rem,var(--sab))] lg:pb-0 flex flex-col gap-2">
+        <button type="submit" data-pay class="btn btn-primary btn-lg w-full rounded-2xl">
+          <span data-pay-label>Place order</span>
+        </button>
+        <p class="flex items-center justify-center gap-1.5 text-xs text-muted">
+          <Icon name="lock" size={14} /> Payments are processed securely by Paystack
+        </p>
+      </div>
+    </div>
+  </form>
+  <script type="application/json" id="vendor-fees" set:html={vendorFees}></script>
+  <script type="application/json" id="pay-hints" set:html={JSON.stringify(payHint)}></script>
+  <div id="cash-limit" data-limit={SITE.cashLimit} data-signed-in="yes" hidden></div>
+</AppLayout>
+
+<script>
+  import { cartSubtotal, getCart, onCartChange, setQty, type Cart } from '../lib/cart';
+  import { money, normalizePhone, prettyPhone } from '../lib/format';
+  import { forgetPromo, savedPromo, savePromo, tidyPromo } from '../lib/promo';
+
+  let cart: Cart | null = getCart();
+  if (!cart) window.location.replace('/cart');
+
+  const form = document.getElementById('checkout-form') as HTMLFormElement;
+  const fees = JSON.parse(document.getElementById('vendor-fees')!.textContent || '{}') as Record<string, number>;
+  const zoneSelect = form.querySelector<HTMLSelectElement | HTMLInputElement>('[name="zone_id"]')!;
+  const q = (sel: string) => form.querySelector<HTMLElement>(sel)!;
+  const hints = JSON.parse(document.getElementById('pay-hints')!.textContent || '{}') as Record<string, string>;
+
+  // ---- Your order: photo, name, choices, price, and − / + ----
+  const MINUS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>';
+  const PLUS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+  function renderLines() {
+    if (!cart) return;
+    q('[data-vendor]').textContent = `From ${cart.vendorName}`;
+    form.querySelector<HTMLAnchorElement>('[data-add-items]')!.href = `/vendors/${cart.vendorSlug}`;
+    const list = q('[data-lines]');
+    list.replaceChildren(
+      ...cart.lines.map((line) => {
+        const li = document.createElement('li');
+        li.className = 'flex gap-3 items-center py-3';
+        const pic = document.createElement('span');
+        pic.className = line.image ? 'img-frame size-16 rounded-xl shrink-0' : 'food-sketch size-16 rounded-xl shrink-0';
+        if (line.image) {
+          const img = document.createElement('img');
+          img.src = line.image;
+          img.alt = '';
+          img.decoding = 'async';
+          pic.append(img);
+        }
+        const info = document.createElement('span');
+        info.className = 'flex-1 min-w-0 flex flex-col gap-0.5';
+        const name = document.createElement('span');
+        name.className = 'font-bold truncate';
+        name.textContent = line.name;
+        info.append(name);
+        if (line.options.length) {
+          const opts = document.createElement('span');
+          opts.className = 'text-[0.8125rem] text-muted truncate';
+          opts.textContent = line.options.map((o) => o.choice).join(', ');
+          info.append(opts);
+        }
+        const price = document.createElement('span');
+        price.className = 'font-extrabold text-brand tabular';
+        price.textContent = money(line.unitPrice * line.qty);
+        info.append(price);
+        const step = document.createElement('span');
+        step.className = 'co-stepper';
+        const minus = document.createElement('button');
+        minus.type = 'button';
+        minus.innerHTML = MINUS;
+        minus.setAttribute('aria-label', line.qty === 1 ? `Remove ${line.name}` : `One less ${line.name}`);
+        minus.addEventListener('click', () => setQty(line.key, line.qty - 1));
+        const n = document.createElement('span');
+        n.className = 'w-6 text-center font-bold tabular';
+        n.textContent = String(line.qty);
+        const plus = document.createElement('button');
+        plus.type = 'button';
+        plus.innerHTML = PLUS;
+        plus.setAttribute('aria-label', `One more ${line.name}`);
+        plus.addEventListener('click', () => setQty(line.key, line.qty + 1));
+        step.append(minus, n, plus);
+        li.append(pic, info, step);
+        return li;
+      }),
+    );
+  }
+  renderLines();
+
+  // ---- Deliver to: open to change, summary updates as they type ----
+  const addrToggle = q('[data-address-toggle]');
+  const addrFields = q('[data-address-fields]');
+  const setAddressOpen = (open: boolean) => {
+    addrFields.hidden = !open;
+    addrToggle.setAttribute('aria-expanded', String(open));
+    addrToggle.textContent = open ? 'Done' : 'Change';
+  };
+  const updateAddressLine = () => {
+    const landmark = form.querySelector<HTMLInputElement>('#landmark')!.value.trim();
+    const zone =
+      zoneSelect instanceof HTMLSelectElement
+        ? (zoneSelect.selectedOptions[0]?.textContent?.split(' (')[0].trim() ?? '')
+        : (zoneSelect.parentElement?.querySelector('p')?.textContent?.split(' (')[0].trim() ?? '');
+    q('[data-address-line]').textContent = [landmark, zone].filter(Boolean).join(', ') || 'Add where the rider should come';
+    const phone = normalizePhone(form.querySelector<HTMLInputElement>('#phone')!.value);
+    const phoneLine = q('[data-phone-line]');
+    phoneLine.hidden = !phone;
+    if (phone) phoneLine.querySelector('span')!.textContent = prettyPhone(phone);
+  };
+  addrToggle.addEventListener('click', () => setAddressOpen(addrFields.hidden === true));
+  addrFields.addEventListener('input', updateAddressLine);
+  addrFields.addEventListener('change', updateAddressLine);
+
+  // ---- Note for the kitchen: hidden until asked for ----
+  q('[data-note-toggle]').addEventListener('click', (e) => {
+    (e.currentTarget as HTMLElement).hidden = true;
+    q('[data-note-field]').hidden = false;
+    form.querySelector<HTMLInputElement>('#note')!.focus();
+  });
+
+  // ---- Promo code ----
+  const promoBox = q('[data-promo]');
+  const promoInput = promoBox.querySelector<HTMLInputElement>('#promo')!;
+  const promoField = promoBox.querySelector<HTMLInputElement>('input[name="promo_code"]')!;
+  const promoMsg = promoBox.querySelector<HTMLElement>('[data-promo-msg]')!;
+  const promoSignIn = promoBox.querySelector<HTMLElement>('[data-promo-signin]')!;
+  const applyBtn = promoBox.querySelector<HTMLButtonElement>('[data-promo-apply]')!;
+  let promo: { code: string; discount: number } | null = null;
+
+  function showPromo() {
+    promoBox.querySelector<HTMLElement>('[data-promo-entry]')!.hidden = Boolean(promo);
+    promoBox.querySelector<HTMLElement>('[data-promo-done]')!.hidden = !promo;
+    promoField.value = promo?.code ?? '';
+    if (promo) {
+      q('[data-promo-code]').textContent = promo.code;
+      q('[data-promo-off]').textContent = money(Math.min(promo.discount, cartSubtotal(cart)));
+    }
+    refresh();
+  }
+
+  function promoError(message: string, signIn = false) {
+    promoMsg.textContent = message;
+    promoMsg.hidden = !message;
+    promoSignIn.hidden = !signIn;
+    promoInput.toggleAttribute('aria-invalid', Boolean(message));
+  }
+
+  async function applyPromo(code: string) {
+    code = tidyPromo(code);
+    if (!code) {
+      promoError('Enter a promo code.');
+      return;
+    }
+    applyBtn.disabled = true;
+    applyBtn.textContent = 'Checking…';
+    try {
+      const res = await fetch('/api/promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, phone: form.querySelector<HTMLInputElement>('#phone')!.value }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { code?: string; discount?: number; error?: string; signIn?: boolean };
+      if (res.ok && body.code) {
+        promo = { code: body.code, discount: Number(body.discount) };
+        savePromo(body.code);
+        promoError('');
+      } else {
+        promo = null;
+        promoInput.value = code;
+        if (body.signIn) savePromo(code); // applied by itself once they've signed in
+        promoError(body.error ?? "That code didn't work. Try again.", Boolean(body.signIn));
+      }
+    } catch {
+      promoError("Couldn't check the code. Check your connection and try again.");
+    } finally {
+      applyBtn.disabled = false;
+      applyBtn.textContent = 'Apply';
+      showPromo();
+    }
+  }
+
+  applyBtn.addEventListener('click', () => applyPromo(promoInput.value));
+  promoInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault(); // Enter here applies the code instead of placing the order
+      applyPromo(promoInput.value);
+    }
+  });
+  promoInput.addEventListener('input', () => promoError(''));
+  promoBox.querySelector('[data-promo-remove]')!.addEventListener('click', () => {
+    promo = null;
+    forgetPromo();
+    promoInput.value = '';
+    showPromo();
+    promoInput.focus();
+  });
+
+  function refresh() {
+    const subtotal = cartSubtotal(cart);
+    const fee = (cart && fees[cart.vendorId]) ?? cart?.deliveryFee ?? 0;
+    const off = promo ? Math.min(promo.discount, subtotal) : 0;
+    const total = Math.round((subtotal + fee - off) * 100) / 100;
+    const discountRow = q('[data-discount-row]');
+    discountRow.hidden = !promo;
+    if (promo) {
+      q('[data-discount-code]').textContent = promo.code;
+      q('[data-discount]').textContent = `-${money(off)}`;
+    }
+    const zoneName =
+      zoneSelect instanceof HTMLSelectElement
+        ? (zoneSelect.selectedOptions[0]?.textContent?.split(' (')[0] ?? '')
+        : (zoneSelect.parentElement?.querySelector('p')?.textContent?.split(' (')[0].trim() ?? '');
+    q('[data-subtotal]').textContent = money(subtotal);
+    q('[data-fee-label]').textContent = zoneSelect.value ? `Delivery to ${zoneName}` : 'Delivery';
+    q('[data-fee]').textContent = money(fee);
+    q('[data-total]').textContent = money(total);
+    const limitEl = document.getElementById('cash-limit')!;
+    const cash = form.querySelector<HTMLInputElement>('input[data-cash]');
+    if (cash && limitEl.dataset.signedIn === 'yes') {
+      const over = total > Number(limitEl.dataset.limit);
+      cash.disabled = over;
+      if (over && cash.checked) {
+        cash.checked = false;
+        form.querySelector<HTMLInputElement>('input[name="payment_method"][value="momo"]')!.checked = true;
+      }
+      // Too big for cash: the cash choice steps aside and a short note explains why
+      const option = form.querySelector<HTMLElement>('[data-pay-option="cash"]');
+      if (option) option.hidden = over;
+      const note = form.querySelector<HTMLElement>('[data-cash-note]');
+      if (note) note.hidden = !over;
+    }
+    const method = (form.querySelector<HTMLInputElement>('input[name="payment_method"]:checked')?.value ?? 'momo');
+    q('[data-pay-hint]').textContent = hints[method] ?? '';
+    q('[data-pay-label]').textContent = method === 'cash' ? `Place order · ${money(total)}` : `Pay ${money(total)}`;
+  }
+  zoneSelect.addEventListener('change', refresh);
+  form.querySelectorAll('input[name="payment_method"]').forEach((r) => r.addEventListener('change', refresh));
+  refresh();
+  // − / + changed the cart: redraw (an empty cart goes back to the cart page)
+  window.setTimeout(() =>
+    onCartChange((next) => {
+      if (!next || next.lines.length === 0) {
+        window.location.replace('/cart');
+        return;
+      }
+      cart = next;
+      renderLines();
+      refresh();
+    }),
+  );
+
+  // A code from a promoter's link, or one typed before: check it straight away
+  const startCode = tidyPromo(promoInput.value) || savedPromo();
+  if (startCode) {
+    promoInput.value = startCode;
+    applyPromo(startCode);
+  }
+
+  function fieldError(input: HTMLInputElement, message: string) {
+    input.setAttribute('aria-invalid', 'true');
+    let hint = input.parentElement!.querySelector<HTMLElement>('[data-error]');
+    if (!hint) {
+      hint = document.createElement('p');
+      hint.dataset.error = '';
+      hint.className = 'text-sm font-semibold text-danger mt-1.5';
+      input.insertAdjacentElement('afterend', hint);
+    }
+    hint.textContent = message;
+  }
+  function clearError(input: HTMLInputElement) {
+    input.removeAttribute('aria-invalid');
+    input.parentElement!.querySelector('[data-error]')?.remove();
+  }
+
+  form.addEventListener('submit', (e) => {
+    const landmark = form.querySelector<HTMLInputElement>('#landmark')!;
+    const phone = form.querySelector<HTMLInputElement>('#phone')!;
+    let ok = true;
+    clearError(landmark);
+    clearError(phone);
+    if (!landmark.value.trim()) {
+      fieldError(landmark, 'Add a landmark so the rider can find you.');
+      ok = false;
+    }
+    if (!normalizePhone(phone.value)) {
+      phone.dispatchEvent(new Event('blur')); // live check shows the reason under the box
+      phone.setAttribute('aria-invalid', 'true');
+      ok = false;
+    }
+    if (!promo && tidyPromo(promoInput.value)) {
+      promoError('Tap Apply to use this promo code, or clear the box.');
+      ok = false;
+    }
+    const current = getCart();
+    if (!current) {
+      ok = false;
+      window.location.replace('/cart');
+    }
+    if (!ok) {
+      e.preventDefault();
+      if (addrFields.querySelector('[aria-invalid="true"]')) setAddressOpen(true);
+      form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      return;
+    }
+    form.querySelector<HTMLInputElement>('input[name="cart_json"]')!.value = JSON.stringify(current);
+    const btn = form.querySelector<HTMLButtonElement>('[data-pay]')!;
+    btn.disabled = true;
+    q('[data-pay-label]').textContent = 'Placing your order…';
+  });
+</script>

@@ -1,0 +1,9 @@
+---
+// Sign-in now opens as a popup. Old links to /login land on the home page
+// with the popup open, then return to `next` after signing in.
+import { getUser, safeNext } from '../lib/session';
+
+const next = safeNext(Astro.url.searchParams.get('next'), '/account');
+if (getUser(Astro.cookies)) return Astro.redirect(next);
+return Astro.redirect(`/?signin=1&next=${encodeURIComponent(next)}`);
+---

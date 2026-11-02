@@ -1,0 +1,2890 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/forms";
+
+/* Outfit for headings, names and the logo (SIL Open Font License, see
+   public/fonts/outfit/LICENSE.txt). One bold file covers the heavier weights,
+   so the browser never fakes a bolder version. */
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url("/fonts/outfit/outfit-700.woff") format("woff");
+}
+/* Inter (SIL Open Font License, see public/fonts/inter/LICENSE.txt), served from the site itself */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter/inter-400.woff") format("woff");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/inter/inter-500.woff") format("woff");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/inter/inter-600.woff") format("woff");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/inter/inter-700.woff") format("woff");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/inter/inter-800.woff") format("woff");
+}
+
+/* =========================================================
+   Relax&Bite design tokens
+   White base, warm red only for actions.
+   Uses Tailwind's default spacing scale (no custom names),
+   so nothing clashes with max-w-* or w-*.
+   ========================================================= */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Headings, restaurant and dish names, the logo */
+  --font-display: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* One theme: white, with warm red for actions. Palette: red #EF4444,
+     deep green #166534, orange #F97316, dark brown #3F292B, cream #FFF3E0. */
+
+  /* Text (dark brown, never pure black) */
+  --color-ink: #3f292b;
+  --color-ink-soft: #5c4547;
+  --color-muted: #7a6a6b;
+  --color-faint: #a8999a;
+
+  /* Surfaces and lines */
+  --color-paper: #ffffff;    /* page background */
+  --color-surface: #ffffff;  /* cards, bars, popups */
+  --color-raised: #fbf9f8;   /* cards on cards */
+  --color-fill: #f5f2f0;     /* quiet fills, search box, image placeholders */
+  --color-line: #eee9e6;
+  --color-line-strong: #ddd5d0;
+
+  /* Brand (buttons, links, active states) */
+  --color-brand: #ef4444;
+  --color-brand-dark: #dc2626;   /* pressed / hover */
+  --color-brand-ink: #b91c1c;    /* red text on red-tinted boxes */
+  --color-brand-soft: #fee2e2;   /* red-tinted box */
+  --color-brand-tint: #fef4f4;   /* the faintest red */
+  /* Text and icons on a red background */
+  --color-on-brand: #ffffff;
+  /* The little bar beside section titles */
+  --color-accent: var(--color-brand);
+  /* Secondary colours from the palette */
+  --color-green: #166534;
+  --color-orange: #f97316;
+  --color-cream: #fff3e0;
+
+  /* Logo */
+  --color-logo-charcoal: #3f292b;
+  --color-logo-orange: #ef4444;  /* the logo's colour (now red; name kept) */
+
+  /* Status */
+  --color-success: #166534;
+  --color-success-soft: #dcfce7;
+  --color-warning-ink: #9a3412;
+  --color-warning-soft: #fff3e0;
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fee2e2;
+  --color-star: #f97316;
+
+  --radius-card: 16px;
+}
+
+/* Shadows, shimmer and photo buttons change with the theme too */
+:root {
+  --shadow-soft: rgb(63 41 43 / 0.1);
+  --shadow-strong: rgb(63 41 43 / 0.16);
+  --shimmer: rgb(255 255 255 / 0.75);
+  --on-photo: rgb(255 255 255 / 0.94);
+  --backdrop: rgb(63 41 43 / 0.45);
+  /* Line drawing of a dish, shown while a food photo loads (or if there isn't one) */
+  --food-sketch: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 100' fill='none' stroke='%23d9cec4' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M66 31c-4-5 4-8 0-13M80 28c-4-5 4-8 0-13M94 31c-4-5 4-8 0-13'/%3E%3Cpath d='M52 52c5-9 15-14 28-14s23 5 28 14'/%3E%3Cpath d='M62 46l3 2M74 42l2 3M88 43l-1 3M98 47l-3 2'/%3E%3Cpath d='M40 52h80'/%3E%3Cpath d='M45 52a35 28 0 0 0 70 0'/%3E%3Cpath d='M68 82h24'/%3E%3Cpath d='M22 30v14M27 30v14M32 30v14M22 44q5 6 10 0M27 48v34'/%3E%3Cellipse cx='138' cy='38' rx='6' ry='9'/%3E%3Cpath d='M138 47v35'/%3E%3C/svg%3E");
+}
+
+
+/* =========================================================
+   Base
+   ========================================================= */
+/* Space taken by the phone's status bar (top) and navigation bar (bottom).
+   env() in newer WebViews, or the values the Android app injects. 0 on computers. */
+:root {
+  --sat: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --sab: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+}
+
+@layer base {
+  [hidden] {
+    display: none !important;
+  }
+  html {
+    color-scheme: light;
+    background: var(--color-paper);
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+  button,
+  [role="button"],
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Headings in Outfit: rounder and friendlier; everything else stays Inter */
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.012em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* =========================================================
+   Reusable pieces
+   ========================================================= */
+@layer components {
+  .container-app {
+    width: 100%;
+    max-width: 80rem;
+    margin-inline: auto;
+    padding-inline: 1rem;
+  }
+  @media (min-width: 640px) {
+    .container-app {
+      padding-inline: 1.5rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    .container-app {
+      padding-inline: 2rem;
+    }
+  }
+
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    color: var(--color-ink);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0 1.125rem;
+    border-radius: 0.75rem;
+    font-weight: 700;
+    font-size: 0.9375rem;
+    line-height: 1;
+    text-decoration: none;
+    border: 1px solid transparent;
+    transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+    white-space: nowrap;
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+  .btn:disabled {
+    opacity: 0.55;
+  }
+  .btn-lg {
+    min-height: 3.375rem;
+    border-radius: 0.875rem;
+    font-size: 1rem;
+  }
+  .btn-primary {
+    background: var(--color-brand);
+    color: var(--color-on-brand);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-brand-dark);
+  }
+  /* Dark brown button */
+  .btn-dark {
+    background: var(--color-ink);
+    color: #fff;
+  }
+  .btn-dark:hover:not(:disabled) {
+    background: var(--color-ink-soft);
+  }
+  /* Quiet button: the card colour with a clear edge */
+  .btn-secondary {
+    background: var(--color-surface);
+    color: var(--color-ink);
+    border-color: var(--color-line-strong);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--color-raised);
+    border-color: var(--color-faint);
+  }
+  .btn-danger {
+    background: #b91c1c;
+    color: #fff;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: #991b1b;
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--color-brand);
+    padding-inline: 0.5rem;
+  }
+
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.75rem;
+    color: var(--color-ink);
+    background: var(--color-raised);
+    border: 1px solid var(--color-line);
+    flex-shrink: 0;
+  }
+  .icon-btn-round {
+    border-radius: 999px;
+  }
+
+  /* "‹ Back": a quiet text link, the same on every page */
+  /* Back: a round button with an arrow, the same on every page */
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    margin-left: -0.25rem;
+    border-radius: 999px;
+    background: var(--color-fill);
+    color: var(--color-ink);
+    text-decoration: none;
+    flex-shrink: 0;
+    transition: background-color 120ms ease, transform 120ms ease;
+  }
+  .back-link:hover {
+    background: var(--color-line);
+  }
+  .back-link:active {
+    transform: scale(0.94);
+  }
+  /* On top of a photo: white so it can be seen */
+  .back-link-pill {
+    margin-left: 0;
+    background: var(--color-surface);
+    box-shadow: 0 2px 10px var(--shadow-soft);
+  }
+
+  .field-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.375rem;
+  }
+  /* A mistake, right under the field it's about (lib/inline-errors.ts) */
+  .field-error {
+    margin-top: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-danger);
+    animation: field-error-in 220ms var(--ease-out);
+  }
+  .field-input[aria-invalid='true'],
+  .cs-trigger[aria-invalid='true'] {
+    border-color: var(--color-danger);
+  }
+  .field-hint {
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    margin-top: 0.375rem;
+  }
+  .field-input {
+    width: 100%;
+    min-height: 2.875rem;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.625rem;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-size: 1rem;
+    font-family: inherit;
+  }
+  /* Bigger, rounder fields for short sign-up forms */
+  .field-input.field-lg {
+    min-height: 3.375rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.875rem;
+  }
+  .field-input:-webkit-autofill {
+    -webkit-text-fill-color: var(--color-ink);
+    -webkit-box-shadow: 0 0 0 100px var(--color-paper) inset;
+  }
+  .field-input::placeholder {
+    color: var(--color-faint);
+  }
+  .field-input:focus {
+    outline: none;
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 3px var(--color-brand-soft);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    height: 2.375rem;
+    padding: 0 1rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-line-strong);
+    background: var(--color-surface);
+    color: var(--color-ink-soft);
+    font-weight: 600;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+  .chip[aria-current="true"],
+  .chip-active {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+    color: var(--color-paper);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: 1.75rem;
+    padding: 0 0.625rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .fav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    background: var(--on-photo);
+    color: var(--color-ink);
+    border: 1px solid var(--color-line-strong);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    transition: transform 120ms ease, color 120ms ease;
+    flex-shrink: 0;
+  }
+  .fav-btn:active {
+    transform: scale(0.92);
+  }
+  .fav-btn[aria-pressed="true"] {
+    color: var(--color-brand);
+  }
+  .fav-btn[aria-pressed="true"] svg path {
+    fill: currentColor;
+  }
+
+  /* Long-form text: privacy policy, terms */
+  .legal {
+    color: var(--color-ink-soft);
+    font-size: 0.9375rem;
+    line-height: 1.7;
+  }
+  .legal {
+    counter-reset: legal;
+  }
+  /* Each section in its own rounded card, with a number before the heading */
+  .legal-card {
+    padding: 1.125rem 1.25rem;
+    border-radius: 1.25rem;
+    border: 1px solid var(--color-line);
+    background: var(--color-surface);
+  }
+  .legal-card > :first-child {
+    margin-top: 0;
+  }
+  .legal-card > :last-child {
+    margin-bottom: 0;
+  }
+  .legal-intro {
+    background: var(--color-surface);
+    border-left: 3px solid var(--color-brand);
+    color: var(--color-ink-soft);
+  }
+  .legal-card h2::before {
+    counter-increment: legal;
+    content: counter(legal) '. ';
+  }
+  .legal h2 {
+    color: var(--color-ink);
+    font-size: 1.0625rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    margin: 2rem 0 0.5rem;
+    scroll-margin-top: 5rem;
+  }
+  .legal h3 {
+    color: var(--color-ink);
+    font-weight: 700;
+    margin: 1.25rem 0 0.25rem;
+  }
+  .legal p,
+  .legal ul {
+    margin: 0.5rem 0;
+  }
+  .legal ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+  }
+  .legal li {
+    margin: 0.25rem 0;
+  }
+  .legal strong {
+    color: var(--color-ink);
+  }
+  .legal a {
+    color: var(--color-brand-ink);
+    font-weight: 600;
+  }
+
+  .hide-scrollbar {
+    scrollbar-width: none;
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ---------- Overlays ----------
+     .sheet  = centred popup (sign in, delivery area, item options, confirm)
+     .drawer = cart panel from the right edge */
+  dialog.sheet,
+  dialog.drawer {
+    padding: 0;
+    border: 0;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    box-shadow: 0 24px 64px var(--shadow-strong);
+    outline: 1px solid var(--color-line);
+    overscroll-behavior: contain;
+  }
+  dialog.sheet {
+    margin: auto;
+    width: calc(100% - 2rem);
+    max-width: 30rem;
+    max-height: calc(100dvh - 2rem);
+    border-radius: 1.25rem;
+  }
+  dialog.sheet.sheet-wide {
+    max-width: 34rem;
+  }
+  dialog.drawer {
+    margin: 0 0 0 auto;
+    width: 100%;
+    max-width: 26rem;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  @media (min-width: 640px) {
+    dialog.drawer {
+      border-radius: 1.25rem 0 0 1.25rem;
+    }
+  }
+  dialog.sheet::backdrop,
+  dialog.drawer::backdrop {
+    background: var(--backdrop);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  dialog[open].sheet,
+  dialog[open].drawer {
+    animation: overlay-in 160ms ease-out;
+  }
+  dialog[open]::backdrop {
+    animation: backdrop-in 160ms ease-out;
+  }
+  /* Stop the page scrolling behind an open overlay */
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+
+  /* Account page: red top, round icon tiles and the partner cards */
+  .account-hero {
+    background: var(--color-brand);
+  }
+  .acc-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.875rem;
+    background: var(--color-brand-tint);
+    color: var(--color-brand);
+  }
+  .partner-cta {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.125rem 1.25rem;
+    border-radius: 1.5rem;
+    text-decoration: none;
+    transition: transform 0.15s ease, filter 0.15s ease;
+  }
+  .partner-cta:hover {
+    filter: brightness(1.06);
+  }
+  .partner-cta:active {
+    transform: scale(0.985);
+  }
+  .partner-cta-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 1rem;
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* =========================================================
+   Big screens and TVs
+   Sizes are in rem, so raising the base font size scales the
+   whole layout: text, spacing, icons and cards together.
+   ========================================================= */
+@media (min-width: 1800px) {
+  html {
+    font-size: 112.5%; /* 18px */
+  }
+}
+@media (min-width: 2400px) {
+  html {
+    font-size: 137.5%; /* 22px: 1440p monitors and large TVs */
+  }
+}
+@media (min-width: 3200px) {
+  html {
+    font-size: 187.5%; /* 30px: 4K screens without scaling */
+  }
+}
+
+/* Remote controls and keyboards: a focus ring you can see from the sofa */
+@media (min-width: 1800px) {
+  :focus-visible {
+    outline-width: 3px;
+    outline-offset: 3px;
+  }
+}
+
+/* TVs report no hover and a coarse or absent pointer: keep tap targets large */
+@media (hover: none) and (pointer: coarse) {
+  .btn {
+    min-height: 3rem;
+  }
+}
+
+/* Very small phones (320px) */
+@media (max-width: 360px) {
+  .container-app {
+    padding-inline: 0.75rem;
+  }
+  /* Rows that run edge to edge inside the page: match the smaller margin */
+  .edge-row {
+    margin-inline: -0.75rem !important;
+    padding-inline: 0.75rem !important;
+  }
+  .chip {
+    padding-inline: 0.75rem;
+  }
+}
+
+/* Checkboxes and radios: our paper and line colours */
+[type="checkbox"]:not(:checked),
+[type="radio"]:not(:checked) {
+  background-color: var(--color-paper);
+  border-color: var(--color-line-strong);
+}
+
+/* =========================================================
+   Panel tables: rows turn into stacked cards on phones.
+   Add class="rtable" to a <table>; PanelLayout copies each
+   column heading onto its cells as data-label.
+   ========================================================= */
+@media (max-width: 767px) {
+  table.rtable,
+  .rtable tbody,
+  .rtable tr,
+  .rtable td {
+    display: block;
+    width: 100%;
+  }
+  .rtable thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .rtable tr {
+    padding: 0.875rem 1rem;
+  }
+  .rtable td {
+    display: flow-root; /* label floats left, value sits on the right */
+    padding: 0.3125rem 0 !important;
+    min-width: 0 !important;
+    text-align: right !important;
+    white-space: normal !important;
+  }
+  .rtable td::before {
+    content: attr(data-label);
+    float: left;
+    margin-right: 1rem;
+    color: var(--color-muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-align: left;
+    padding-top: 0.0625rem;
+  }
+  .rtable td:empty {
+    display: none;
+  }
+  /* First cell is the card's title */
+  .rtable td:first-child {
+    text-align: left !important;
+    font-size: 0.9375rem;
+    padding-bottom: 0.5rem !important;
+  }
+  .rtable td:first-child::before,
+  .rtable td[data-label=""]::before {
+    display: none;
+  }
+  /* Cells with no heading (actions) */
+  .rtable td[data-label=""] {
+    padding-top: 0.5rem !important;
+  }
+  .rtable td .field-input {
+    text-align: left;
+  }
+}
+
+/* =========================================================
+   Motion
+   Short and purposeful: things fade and settle into place, nothing
+   bounces or spins. One set of timings for the whole app.
+   Everything here switches off for "reduce motion" (see the
+   prefers-reduced-motion rule near the top).
+   ========================================================= */
+:root {
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-soft: cubic-bezier(0.33, 1, 0.68, 1); /* long, gentle landings */
+  --ease-push: cubic-bezier(0.32, 0.72, 0, 1); /* page slides, like iOS */
+  --dur-fast: 140ms;
+  --dur: 220ms;
+  --dur-slow: 360ms;
+  --dur-calm: 700ms; /* slow fades: refresh, photos, things arriving on their own */
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+@keyframes field-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.22);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes ring {
+  0% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.75;
+  }
+}
+
+/* ---------- Moving between pages: a quick cross-fade, header and tab bar stay put ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+  animation-timing-function: var(--ease-out);
+}
+.vt-header {
+  view-transition-name: site-header;
+}
+.vt-tabbar {
+  view-transition-name: tab-bar;
+}
+.vt-sidebar {
+  view-transition-name: side-menu;
+}
+::view-transition-group(site-header),
+::view-transition-group(tab-bar),
+::view-transition-group(side-menu) {
+  animation-duration: 0s;
+}
+
+/* ---------- Page content settles in, top to bottom ---------- */
+/* Fade only (no sliding) so fixed bars inside the page never jump; backwards
+   fill means nothing is left applied once it finishes. */
+/* (Each block now appears in order instead: see "Content appears in order") */
+
+/* Cards further down fade up as they scroll into view (browsers that support it) */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
+  }
+}
+
+/* ---------- Things you touch ---------- */
+.btn {
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.28);
+}
+.icon-btn,
+.chip,
+.fav-btn,
+.badge,
+a,
+summary {
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.icon-btn:active,
+.chip:active {
+  transform: scale(0.96);
+}
+.field-input {
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+[type='checkbox'],
+[type='radio'] {
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+/* Cards that are links lift slightly under a mouse */
+@media (hover: hover) and (pointer: fine) {
+  a.card,
+  .card-lift {
+    transition:
+      transform var(--dur) var(--ease-out),
+      box-shadow var(--dur) var(--ease-out),
+      border-color var(--dur) var(--ease-out);
+  }
+  a.card:hover,
+  .card-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px var(--shadow-soft);
+  }
+  .img-zoom img {
+    transition: transform 520ms var(--ease-out);
+  }
+  .group:hover .img-zoom img {
+    transform: scale(1.04);
+  }
+  .icon-btn:hover {
+    background-color: var(--color-fill);
+  }
+}
+
+/* Heart: a small pop when you save something */
+.fav-btn.is-popping svg {
+  animation: pop 320ms var(--ease-out);
+}
+/* Bag count: a nudge when it goes up */
+[data-cart-count].is-bumping,
+[data-bar-count].is-bumping {
+  animation: bump 360ms var(--ease-out);
+}
+
+/* Two-way switch (Sign in | Sign up) */
+.seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.875rem;
+  background: var(--color-fill);
+}
+.seg > button {
+  min-height: 2.5rem;
+  border-radius: 0.625rem;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: var(--color-muted);
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+.seg > button[aria-selected='true'] {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08), 0 0 0 1px var(--color-line);
+}
+
+/* Vendor order board: the cards of the chosen stage, and a calm empty state */
+.board-col {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+}
+@media (min-width: 768px) {
+  .board-col {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1280px) {
+  .board-col {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.board-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  border-radius: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+}
+.board-empty .text-sm {
+  max-width: 26rem;
+}
+.board-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 0.5rem;
+  border-radius: 999px;
+  background: var(--color-fill);
+  color: var(--color-muted);
+}
+
+/* Section titles with a short orange bar in front ("Open now", menu sections) */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.section-title::before {
+  content: '';
+  flex: none;
+  width: 0.3125rem;
+  height: 1.15em;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+/* Phone cart bar: slides up the first time something goes in */
+[data-cart-bar].is-arriving {
+  animation: bar-up 320ms var(--ease-out);
+}
+@keyframes bar-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-cart-bar].is-arriving {
+    animation: none;
+  }
+}
+
+/* ---------- Pop-ups: fade and settle in, and back out when closed ---------- */
+@supports (transition-behavior: allow-discrete) {
+  dialog.sheet,
+  dialog.drawer {
+    transition:
+      opacity var(--dur) var(--ease-out),
+      transform var(--dur-slow) var(--ease-out),
+      overlay var(--dur-slow) allow-discrete,
+      display var(--dur-slow) allow-discrete;
+    opacity: 0;
+  }
+  dialog.sheet {
+    transform: translateY(14px) scale(0.98);
+  }
+  dialog.drawer {
+    transform: translateX(100%);
+  }
+  dialog[open].sheet,
+  dialog[open].drawer {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+  @starting-style {
+    dialog[open].sheet {
+      opacity: 0;
+      transform: translateY(14px) scale(0.98);
+    }
+    dialog[open].drawer {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+  }
+  dialog.sheet::backdrop,
+  dialog.drawer::backdrop {
+    transition:
+      opacity var(--dur) var(--ease-out),
+      overlay var(--dur) allow-discrete,
+      display var(--dur) allow-discrete;
+    opacity: 0;
+  }
+  dialog[open].sheet::backdrop,
+  dialog[open].drawer::backdrop {
+    opacity: 1;
+    animation: none;
+  }
+  @starting-style {
+    dialog[open].sheet::backdrop,
+    dialog[open].drawer::backdrop {
+      opacity: 0;
+    }
+  }
+}
+
+/* Small messages slide up into view */
+#global-toast:not([hidden]),
+[data-toast]:not([hidden]) {
+  animation: toast-in var(--dur) var(--ease-out);
+}
+.alert-in {
+  animation: toast-in var(--dur-slow) var(--ease-out);
+}
+
+/* Messages on the page after a form is sent */
+[role='alert'],
+[data-flash] {
+  animation: fade-in var(--dur) var(--ease-out);
+}
+
+/* ---------- Live status ---------- */
+/* The current step on an order: a soft ring that keeps going while it's live */
+.live-ring {
+  position: relative;
+}
+.live-ring::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 999px;
+  border: 2px solid var(--color-brand);
+  animation: ring 1.8s var(--ease-out) infinite;
+  pointer-events: none;
+}
+/* "Open now" and "online" dots */
+.live-dot {
+  animation: breathe 2.4s var(--ease-in-out) infinite;
+}
+/* Location screen pin */
+.breathe {
+  animation: breathe 3.2s var(--ease-in-out) infinite;
+}
+
+/* ---------- Accordions (Help questions) open smoothly where supported ---------- */
+@supports (interpolate-size: allow-keywords) {
+  .accordion {
+    interpolate-size: allow-keywords;
+  }
+  .accordion::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition:
+      block-size var(--dur-slow) var(--ease-out),
+      content-visibility var(--dur-slow) allow-discrete;
+  }
+  .accordion[open]::details-content {
+    block-size: auto;
+  }
+}
+
+/* Steps and tabs: the newly shown part fades in */
+[data-step]:not([hidden]),
+[data-ask]:not([hidden]),
+[data-pick]:not([hidden]),
+[data-col] {
+  animation: fade-in var(--dur) var(--ease-out) backwards;
+}
+
+/* Tabs and progress bars glide between states */
+[role='tab'],
+[aria-current='page'],
+nav a {
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur) var(--ease-out);
+}
+
+/* =========================================================
+   Loading states
+   ========================================================= */
+@keyframes shimmer {
+  0% {
+    background-position: 150% 0;
+  }
+  70%,
+  100% {
+    background-position: -50% 0;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes nav-progress {
+  0% {
+    transform: scaleX(0);
+  }
+  20% {
+    transform: scaleX(0.35);
+  }
+  60% {
+    transform: scaleX(0.7);
+  }
+  100% {
+    transform: scaleX(0.92);
+  }
+}
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes pill-in {
+  from {
+    transform: scaleX(0.6);
+    opacity: 0;
+  }
+}
+
+/* Skeleton: one soft light crosses the whole screen from left to right.
+   The light is fixed to the screen (not to each shape), so it passes over
+   every shape at the same moment, in one clean line. */
+@keyframes sheen {
+  0% {
+    background-position: -100vw 0;
+  }
+  65%,
+  100% {
+    background-position: 100vw 0;
+  }
+}
+/* In the components layer, so rounded-full and friends on a shape still win */
+@layer components {
+  .skeleton {
+    background-color: var(--color-fill);
+    background-image: linear-gradient(100deg, transparent 35%, var(--shimmer) 50%, transparent 65%);
+    background-size: 100vw 100%;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    animation: sheen 1.9s var(--ease-in-out) infinite;
+    border-radius: 0.5rem;
+  }
+  .skeleton-line {
+    height: 0.75rem;
+    border-radius: 999px;
+  }
+  .skeleton-title {
+    height: 1rem;
+    border-radius: 999px;
+  }
+}
+
+/* Photos: a line drawing of a dish (with the light passing over it) until
+   the picture arrives, then the photo fades in over it */
+.img-frame,
+.food-sketch {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-fill);
+  background-image: var(--food-sketch);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: auto min(46%, 7.5rem);
+}
+.img-frame > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition:
+    opacity 700ms var(--ease-out),
+    transform 1100ms var(--ease-out);
+}
+html.js .img-frame:has(> img:not(.is-loaded):not(.is-broken)) {
+  background-image: linear-gradient(100deg, transparent 35%, var(--shimmer) 50%, transparent 65%), var(--food-sketch);
+  background-size: 100vw 100%, auto min(46%, 7.5rem);
+  background-position: 0 0, center;
+  background-attachment: fixed, scroll;
+  background-repeat: no-repeat;
+  animation: sheen-sketch 1.9s var(--ease-in-out) infinite;
+}
+@keyframes sheen-sketch {
+  0% {
+    background-position: -100vw 0, center;
+  }
+  65%,
+  100% {
+    background-position: 100vw 0, center;
+  }
+}
+html.js .img-frame > img:not(.is-loaded) {
+  opacity: 0;
+  transform: scale(1.04);
+}
+/* Photos already in the phone's memory show straight away, with no fade */
+.img-frame > img.is-instant {
+  transition: none;
+}
+.img-frame > img.is-broken {
+  visibility: hidden;
+}
+
+/* Top bar while the next page loads */
+#nav-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 2px;
+  z-index: 100;
+  pointer-events: none;
+  background: var(--color-brand);
+  transform-origin: left center;
+  transform: scaleX(0);
+  opacity: 0;
+}
+#nav-progress.is-active {
+  opacity: 1;
+  animation: nav-progress 8s cubic-bezier(0.1, 0.7, 0.2, 1) forwards;
+}
+#nav-progress.is-done {
+  opacity: 0;
+  transform: scaleX(1);
+  transition:
+    transform 160ms var(--ease-out),
+    opacity 260ms 120ms var(--ease-out);
+}
+
+/* Buttons that are busy show a small spinner and can't be tapped twice */
+.btn[aria-busy='true'] {
+  pointer-events: none;
+  opacity: 0.85;
+}
+.btn[aria-busy='true']::before {
+  content: '';
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
+}
+
+/* =========================================================
+   Finishing touches
+   ========================================================= */
+/* Lists settle in one item after another */
+.stagger > * {
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 35ms;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 70ms;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 105ms;
+}
+.stagger > *:nth-child(5) {
+  animation-delay: 140ms;
+}
+.stagger > *:nth-child(6) {
+  animation-delay: 175ms;
+}
+.stagger > *:nth-child(n + 7) {
+  animation-delay: 210ms;
+}
+
+/* Tab bars: a soft pill behind the current tab's icon */
+.nav-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  padding: 0 1.125rem;
+  border-radius: 999px;
+  transition: background-color var(--dur) var(--ease-out);
+}
+[aria-current='page'] > .nav-pill {
+  background-color: var(--color-brand-soft);
+  animation: pill-in var(--dur-slow) var(--ease-out);
+}
+
+/* A tick that draws itself (order placed) */
+.draw-check path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: draw 520ms 120ms var(--ease-out) forwards;
+}
+
+/* Sticky bars get a shadow once the page has scrolled under them */
+@keyframes bar-shadow {
+  to {
+    box-shadow: 0 8px 24px var(--shadow-strong);
+    border-bottom-color: var(--color-line-strong);
+  }
+}
+@supports (animation-timeline: scroll()) {
+  .scroll-shadow {
+    animation: bar-shadow linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 72px;
+  }
+}
+
+/* =========================================================
+   Pull to refresh
+   The standard phone style: a small white circle comes down with
+   your finger, its ring fills as you pull, and spins while the
+   page reloads.
+   ========================================================= */
+html.has-ptr,
+html.has-ptr body {
+  overscroll-behavior-y: contain; /* turns off the browser's own pull-to-refresh */
+}
+#ptr {
+  --pull: 0;
+  --progress: 0;
+  position: fixed;
+  top: max(0.5rem, var(--sat));
+  left: 50%;
+  z-index: 70;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-left: -1.25rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--color-brand);
+  background: var(--color-surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.14), 0 4px 10px rgb(0 0 0 / 0.08);
+  pointer-events: none;
+  opacity: min(1, calc(var(--progress) * 2));
+  transform: translateY(calc(var(--pull) * 1px - 3.5rem));
+}
+#ptr.is-settling {
+  transition:
+    transform 240ms var(--ease-out),
+    opacity 180ms var(--ease-out);
+}
+/* The ring fills and turns as you pull */
+#ptr svg {
+  transform: rotate(calc(var(--progress) * 300deg - 90deg));
+}
+#ptr .ptr-arc {
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - var(--progress) * 78);
+  opacity: calc(0.4 + var(--progress) * 0.6);
+}
+/* Refreshing: the ring spins */
+@keyframes ptr-spin {
+  to {
+    transform: rotate(270deg);
+  }
+}
+#ptr.is-refreshing {
+  opacity: 1;
+  transform: translateY(calc(var(--pull) * 1px - 3.5rem));
+}
+#ptr.is-refreshing svg {
+  animation: ptr-spin 0.8s linear infinite;
+}
+#ptr.is-refreshing .ptr-arc {
+  stroke-dashoffset: 30;
+  opacity: 1;
+}
+
+/* No text selection or page scroll while pulling */
+html.is-pulling-page,
+html.is-pulling-page body {
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+/* =========================================================
+   Refreshing
+   Every refresh shows the screen's outline first. When the
+   fresh page is ready the outline fades away slowly and the
+   content settles in under it, top to bottom. The panels'
+   automatic refresh stays quiet: no outline, just a soft light
+   passing along the top bar.
+   ========================================================= */
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+/* Same as fade-in under its own name, so the page's entrance plays again
+   when the outline lifts (an animation only restarts when its name changes) */
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+#ptr-skeleton {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 25; /* under the tab bar, over the page */
+  overflow: hidden;
+  background: var(--color-paper);
+  padding-top: max(1rem, calc(var(--sat) + 0.75rem));
+}
+@media (min-width: 1024px) {
+  #ptr-skeleton[data-kind='panel'] {
+    left: 16rem; /* the side menu stays visible */
+    padding-top: 2rem;
+  }
+}
+#ptr-skeleton.is-shown,
+html.is-reloading #ptr-skeleton {
+  display: block;
+}
+/* Only for slow pages: it fades in softly over the page you're on */
+#ptr-skeleton.is-shown {
+  animation: page-show 420ms var(--ease-soft);
+}
+/* Safety net: if the page script never runs, the outline still goes away */
+@keyframes skeleton-gone {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+html.is-reloading:not(.is-revealing) #ptr-skeleton {
+  animation: skeleton-gone 400ms 2.5s var(--ease-out) forwards;
+}
+/* Under the app intro the outline waits; it shows for a moment once the intro lifts */
+html.intro.is-reloading #ptr-skeleton {
+  animation: none;
+}
+/* Its own name so it starts fresh when the page is ready (a renamed animation restarts) */
+@keyframes skeleton-lift {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* The outline's shapes settle in one after another; the light then crosses
+   them all together (see .skeleton) */
+.sk-seq > * {
+  --sk-i: 0;
+}
+.sk-seq > *:nth-child(2) {
+  --sk-i: 1;
+}
+.sk-seq > *:nth-child(3) {
+  --sk-i: 2;
+}
+.sk-seq > *:nth-child(4) {
+  --sk-i: 3;
+}
+.sk-seq > *:nth-child(5) {
+  --sk-i: 4;
+}
+.sk-seq > *:nth-child(n + 6) {
+  --sk-i: 5;
+}
+@keyframes sk-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.sk-seq > :not(.skeleton) {
+  animation: sk-in 520ms var(--ease-soft) backwards;
+  animation-delay: calc(var(--sk-i) * 70ms);
+}
+.sk-seq > .skeleton {
+  animation:
+    sk-in 520ms var(--ease-soft) backwards,
+    sheen 1.9s var(--ease-in-out) infinite;
+  animation-delay: calc(var(--sk-i) * 70ms), 0ms;
+}
+/* Restaurant cards in the outline arrive one after another, after the rows above */
+.sk-cards > * {
+  animation: sk-in 560ms var(--ease-soft) backwards;
+  animation-delay: 380ms;
+}
+.sk-cards > *:nth-child(2) {
+  animation-delay: 460ms;
+}
+.sk-cards > *:nth-child(3) {
+  animation-delay: 540ms;
+}
+.sk-cards > *:nth-child(4) {
+  animation-delay: 620ms;
+}
+/* Under the intro, the outline waits to build until the intro has lifted */
+html.intro .sk-seq > *,
+html.intro .sk-cards > * {
+  animation-play-state: paused;
+}
+
+/* Opening the app or site: the tab bar rises into place once the outline is there */
+@keyframes tabbar-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html.first-open:not(.intro) .vt-tabbar {
+    animation: tabbar-up 560ms var(--ease-soft) 300ms backwards;
+  }
+}
+
+/* Ready: the outline fades away slowly while the page settles in */
+html.is-revealing #ptr-skeleton {
+  display: block;
+  pointer-events: none;
+  animation: skeleton-lift 480ms var(--ease-soft) forwards;
+}
+/* After a pull, the bowl carries over to the fresh page and floats away when it's ready */
+html.was-pulled #ptr {
+  --pull: 72 !important;
+  --progress: 1 !important;
+  opacity: 1;
+  border-color: var(--color-brand);
+}
+html.was-pulled #ptr .ptr-fill {
+  opacity: 0.28;
+  transform: scaleY(1);
+}
+html.was-pulled #ptr .ptr-steam path {
+  animation: steam 1.2s var(--ease-out) infinite;
+}
+html.was-pulled #ptr .ptr-steam path:nth-child(2) {
+  animation-delay: 0.2s;
+}
+html.was-pulled #ptr .ptr-steam path:nth-child(3) {
+  animation-delay: 0.4s;
+}
+html.was-pulled.is-revealing #ptr {
+  opacity: 0;
+  transform: translateY(-1rem) scale(0.85);
+  transition:
+    opacity 500ms var(--ease-out),
+    transform var(--dur-calm) var(--ease-soft);
+}
+
+/* Quiet refresh (panels): nothing replays, a soft light runs along the top bar */
+html.was-quiet [data-motion='page'] > *,
+html.was-quiet [data-refresh-area] > *,
+html.was-quiet .stagger > *,
+html.was-quiet .reveal {
+  animation: none;
+}
+html.was-quiet .vt-header {
+  overflow: hidden; /* sticky already holds the light in place */
+}
+html.was-quiet .vt-header::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-brand) 50%, transparent);
+  opacity: 0.7;
+  transform: translateX(-100%);
+  animation: sweep 1.4s var(--ease-in-out) 150ms forwards;
+}
+@media (min-width: 1024px) {
+  html.was-quiet [data-refresh-area]::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 16rem;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--color-brand) 50%, transparent);
+    opacity: 0.7;
+    transform: translateX(-100%);
+    animation: sweep 1.4s var(--ease-in-out) 150ms forwards;
+    pointer-events: none;
+  }
+}
+
+/* =========================================================
+   Slow fades
+   For things that arrive on their own rather than because
+   you tapped: section content, status changes, notices.
+   ========================================================= */
+.fade-slow {
+  animation: fade-in var(--dur-calm) var(--ease-soft) backwards;
+}
+.settle-slow {
+  animation: settle var(--dur-calm) var(--ease-soft) backwards;
+}
+.delay-1 {
+  animation-delay: 120ms;
+}
+.delay-2 {
+  animation-delay: 240ms;
+}
+.delay-3 {
+  animation-delay: 360ms;
+}
+
+/* Text that changes in place (counts, totals, statuses) eases between values */
+.swap-soft {
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    color var(--dur-slow) var(--ease-out);
+}
+
+/* Toasts and panel alerts fade out slowly instead of vanishing */
+#global-toast.toast-out,
+.alert-out {
+  animation: fade-out 520ms var(--ease-soft) forwards;
+  pointer-events: none;
+}
+
+/* Cards lift their shadow slowly under the finger or pointer */
+@media (hover: hover) {
+  a.card,
+  .card-hover {
+    transition:
+      border-color var(--dur-slow) var(--ease-out),
+      box-shadow var(--dur-calm) var(--ease-soft),
+      transform var(--dur-slow) var(--ease-out);
+  }
+  a.card:hover,
+  .card-hover:hover {
+    border-color: var(--color-line-strong);
+    box-shadow: 0 14px 32px var(--shadow-soft);
+  }
+}
+
+/* =========================================================
+   Moving between pages
+   One continuous movement, no blinking: the page you're on stays
+   exactly as it is until the next one is ready (nothing fades it
+   out early). Then the new page comes in from the side: it becomes
+   visible quickly while the movement settles slowly.
+   Forward comes from the right, back from the left, tabs just fade.
+   The header and tab bar stay where they are.
+   ========================================================= */
+@keyframes page-show {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes page-hide {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes from-right {
+  from {
+    transform: translateX(32px);
+  }
+}
+@keyframes from-left {
+  from {
+    transform: translateX(-32px);
+  }
+}
+@keyframes to-left {
+  to {
+    transform: translateX(-24px);
+  }
+}
+@keyframes to-right {
+  to {
+    transform: translateX(24px);
+  }
+}
+
+/* Built-in page transitions (newer phones and browsers), like a native app:
+   forward, the new page slides in over the old one from the right edge while
+   the old one drifts left and dims; back, the page you're leaving slides
+   away to the right and uncovers the one underneath. Tabs just cross-fade. */
+@keyframes push-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes push-out {
+  to {
+    transform: translateX(-28%);
+    filter: brightness(0.92);
+  }
+}
+@keyframes pop-in {
+  from {
+    transform: translateX(-28%);
+    filter: brightness(0.92);
+  }
+}
+@keyframes pop-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+html:active-view-transition-type(forward)::view-transition-old(root) {
+  animation: push-out 420ms var(--ease-push) both;
+}
+html:active-view-transition-type(forward)::view-transition-new(root) {
+  animation: push-in 420ms var(--ease-push) both;
+  box-shadow: -12px 0 32px rgb(0 0 0 / 0.12);
+}
+html:active-view-transition-type(back)::view-transition-old(root) {
+  z-index: 1; /* the page being closed stays on top while it slides away */
+  animation: pop-out 380ms var(--ease-push) both;
+  box-shadow: -12px 0 32px rgb(0 0 0 / 0.12);
+}
+html:active-view-transition-type(back)::view-transition-new(root) {
+  animation: pop-in 380ms var(--ease-push) both;
+}
+html:active-view-transition-type(forward)::view-transition-image-pair(root),
+html:active-view-transition-type(back)::view-transition-image-pair(root) {
+  isolation: auto;
+}
+html:active-view-transition-type(forward)::view-transition-old(root),
+html:active-view-transition-type(forward)::view-transition-new(root),
+html:active-view-transition-type(back)::view-transition-old(root),
+html:active-view-transition-type(back)::view-transition-new(root) {
+  mix-blend-mode: normal;
+  background: var(--color-paper);
+}
+html:active-view-transition-type(tab)::view-transition-old(root) {
+  animation: page-hide 260ms var(--ease-out) both;
+}
+html:active-view-transition-type(tab)::view-transition-new(root) {
+  animation: page-show 320ms var(--ease-out) both;
+}
+/* The whole page is already moving, so its parts don't fade in again on their own */
+html[data-nav]:not(.no-vt) [data-motion='page'] > * {
+  animation: none;
+}
+
+/* Older WebViews: the old page is held on screen until the new one is ready,
+   then the new page's content comes in from the side. Parts holding a fixed bar
+   (checkout, cart) only fade, so the bar never jumps. */
+html.no-vt[data-nav='forward'] :is([data-motion='page'], [data-refresh-area]) > :not(.fixed, :has(.fixed)) {
+  animation:
+    page-show 220ms var(--ease-out) backwards,
+    from-right 520ms var(--ease-soft) backwards;
+}
+html.no-vt[data-nav='back'] :is([data-motion='page'], [data-refresh-area]) > :not(.fixed, :has(.fixed)) {
+  animation:
+    page-show 220ms var(--ease-out) backwards,
+    from-left 520ms var(--ease-soft) backwards;
+}
+html.no-vt[data-nav] :is([data-motion='page'], [data-refresh-area]) > :is(.fixed, :has(.fixed)),
+html.no-vt[data-nav='tab'] :is([data-motion='page'], [data-refresh-area]) > * {
+  animation: page-show 260ms var(--ease-out) backwards;
+}
+/* A refresh shows the outline instead of sliding */
+html.is-reloading:not(.revealed) :is([data-motion='page'], [data-refresh-area]) > * {
+  animation: none;
+}
+
+/* The box to type your area slides open slowly when "Not listed" is chosen */
+.other-area:not([hidden]) {
+  animation: settle var(--dur-calm) var(--ease-soft) backwards;
+}
+
+/* =========================================================
+   Website or app
+   The Android app marks pages with html.in-app. The credit line
+   shows on every website page, but in the app only where people
+   look for it (Account, welcome and legal pages).
+   ========================================================= */
+html.in-app .site-only,
+html:not(.in-app) .app-only {
+  display: none !important;
+}
+/* In the app the site footer only keeps its room for the tab bar */
+html.in-app .site-footer {
+  border-top: 0;
+  background: transparent;
+  margin-top: 0;
+}
+
+/* =========================================================
+   Intro (app only, once per launch, tap to skip)
+   White, the same white as the phone's start-up screen, so the app opens
+   straight into it. One idea, told once:
+   1. The red R&B mark pops in.
+   2. A bite is taken out of its corner, one tooth mark at a time.
+   3. The name and the slogan rise in underneath.
+   4. Everything drifts up and fades, showing the app.
+   ========================================================= */
+#intro {
+  --intro-rise: cubic-bezier(0.16, 1, 0.3, 1);
+  display: none;
+}
+html.intro #intro {
+  display: grid;
+  place-items: center;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: #fff;
+  cursor: pointer;
+}
+html.intro body {
+  overflow: hidden;
+}
+.intro-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 1.5rem;
+  text-align: center;
+}
+/* Each line hides what's below it, so the words rise out of nowhere */
+.intro-line {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+@keyframes intro-rise {
+  from {
+    transform: translateY(110%);
+  }
+}
+
+/* 1. The mark */
+.intro-mark {
+  display: block;
+  width: 6.5rem;
+  height: 6.5rem;
+  animation: intro-pop 650ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.intro-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 14px 24px rgb(239 68 68 / 0.28));
+}
+@keyframes intro-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.55) rotate(-8deg);
+  }
+}
+
+/* 2. The bite: white tooth marks close over the corner, one after another */
+.intro-teeth circle {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0);
+  animation: intro-chomp 190ms cubic-bezier(0.3, 1.4, 0.6, 1) calc(620ms + var(--t) * 70ms) forwards;
+}
+@keyframes intro-chomp {
+  to {
+    transform: scale(1);
+  }
+}
+/* The mark gives a little as the bite lands */
+@keyframes intro-give {
+  40% {
+    transform: scale(0.95);
+  }
+}
+.intro-mark svg {
+  animation: intro-give 320ms ease-out 700ms;
+}
+
+/* 3. The name and the slogan */
+.intro-name-line {
+  margin-top: 1.25rem;
+}
+.intro-name {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 9.5vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  animation: intro-rise 850ms var(--intro-rise) 900ms both;
+}
+.intro-slogan-line {
+  margin-top: 0.375rem;
+}
+.intro-slogan {
+  display: inline-block;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-muted);
+  animation: intro-rise 800ms var(--intro-rise) 1100ms both;
+}
+
+/* 4. Out: the stage drifts up and the white fades into the app */
+@keyframes intro-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes intro-stage-out {
+  to {
+    opacity: 0;
+    transform: translateY(-1.5rem) scale(0.97);
+  }
+}
+html.intro-leaving #intro {
+  pointer-events: none;
+  animation: intro-out 650ms ease-in forwards;
+}
+html.intro-leaving .intro-stage {
+  animation: intro-stage-out 420ms ease-in forwards;
+}
+
+/* Welcome screen: a rider on the way with your food, drawn in the app's
+   line style on soft orange. The town and road slide by, the wheels turn,
+   steam rises from the food box. Still for people who prefer less motion. */
+.welcome-hero {
+  position: relative;
+  height: 44dvh;
+  min-height: 16rem;
+  max-height: 25rem;
+  overflow: hidden;
+  border-radius: 0 0 1.75rem 1.75rem;
+  background: var(--color-brand-soft);
+}
+@media (min-width: 640px) {
+  .welcome-hero {
+    max-width: 28rem;
+    margin: 1.5rem auto 0;
+    border-radius: 1.75rem;
+  }
+}
+/* The illustration rides in from the left when the screen opens, then
+   floats gently for as long as the screen is open. Around it: wind lines
+   behind the food box, dust puffing from the back wheel, and a ping
+   spreading from the map pin. */
+.welcome-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-raised);
+}
+.art-stage {
+  position: relative;
+  display: inline-block; /* hugs the picture, so the extras line up with it */
+  margin-top: 7%;
+  line-height: 0;
+}
+.art-stage img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(84vw, 24rem);
+  max-height: 31dvh;
+}
+.art-stage i {
+  position: absolute;
+  display: block;
+}
+/* positions are shares of the picture, so they stay put at any size */
+.art-wind i {
+  left: 2%;
+  height: 3px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--color-ink) 22%, transparent);
+  opacity: 0;
+}
+.art-wind i:nth-child(1) {
+  top: 44%;
+  width: 11%;
+}
+.art-wind i:nth-child(2) {
+  top: 52%;
+  left: 0;
+  width: 14%;
+}
+.art-wind i:nth-child(3) {
+  top: 60%;
+  width: 9%;
+}
+.art-dust i {
+  left: 24%;
+  top: 84%;
+  width: 7%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #f7d4a3;
+  opacity: 0;
+}
+.art-ping i {
+  left: 78.3%;
+  top: 76%;
+  width: 16%;
+  aspect-ratio: 2.4 / 1;
+  margin: -3.4% 0 0 -8%;
+  border-radius: 50%;
+  border: 2px solid #e8414a;
+  opacity: 0;
+}
+@keyframes art-ride-in {
+  from {
+    opacity: 0;
+    transform: translateX(-28%);
+  }
+}
+@keyframes art-float {
+  50% {
+    transform: translateY(-6px);
+  }
+}
+@keyframes art-wind {
+  0% {
+    opacity: 0;
+    transform: translateX(30%);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-90%);
+  }
+}
+@keyframes art-dust {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+  }
+  20% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-260%, -60%) scale(1.5);
+  }
+}
+@keyframes art-ping {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.25);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .art-stage {
+    animation:
+      art-ride-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both,
+      art-float 2.6s ease-in-out 900ms infinite;
+  }
+  .art-wind i {
+    animation: art-wind 1.2s ease-out infinite;
+  }
+  .art-wind i:nth-child(2) {
+    animation-delay: 0.35s;
+  }
+  .art-wind i:nth-child(3) {
+    animation-delay: 0.7s;
+  }
+  .art-dust i {
+    animation: art-dust 1.4s ease-out infinite;
+  }
+  .art-dust i:nth-child(2) {
+    animation-delay: 0.45s;
+  }
+  .art-dust i:nth-child(3) {
+    animation-delay: 0.9s;
+  }
+  .art-ping i {
+    animation: art-ping 2s ease-out infinite;
+  }
+  .art-ping i:nth-child(2) {
+    animation-delay: 1s;
+  }
+}
+
+/* Food arriving: restaurant cards rise into place one after another, each
+   photo settling as it loads. Plays when a page opens, again when the
+   loading outline lifts, and after the app intro (new names restart it). */
+@keyframes food-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+}
+@keyframes food-pop-again {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .food-in {
+    animation: food-pop 620ms var(--ease-soft) backwards;
+    animation-delay: calc(var(--i, 0) * 70ms);
+  }
+  html.revealed .food-in {
+    animation-name: food-pop-again;
+    animation-delay: calc(120ms + var(--i, 0) * 70ms);
+  }
+  html.was-quiet .food-in {
+    animation: none;
+  }
+}
+
+/* Restaurant cards: a framed tile, the photo filling the top, the status on
+   the photo, details underneath and the save button on the photo's corner */
+.food-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  background: var(--color-surface);
+  /* Soft orange ring around each food card */
+  border: 2px solid color-mix(in srgb, var(--color-brand) 30%, var(--color-surface));
+  transition: border-color 160ms ease, box-shadow 200ms ease;
+}
+.food-card:hover {
+  border-color: color-mix(in srgb, var(--color-brand) 55%, var(--color-surface));
+  box-shadow: 0 8px 20px var(--shadow-soft);
+}
+.food-card-badge {
+  position: absolute;
+  left: 0.625rem;
+  bottom: 0.625rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: calc(100% - 1.25rem);
+  padding: 0.3125rem 0.625rem;
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 8px var(--shadow-soft);
+}
+.food-card .food-card-save {
+  position: absolute;
+  top: 0.625rem;
+  right: 0.625rem;
+  border-radius: 0.75rem;
+  background: var(--color-surface);
+  border: 0;
+  box-shadow: 0 2px 8px var(--shadow-soft);
+}
+
+/* Search page: outlined chips, result rows with a photo, a small tag and an orange price */
+.search-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 2.625rem;
+  padding: 0 1.125rem;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in srgb, var(--color-brand) 45%, var(--color-surface));
+  background: var(--color-surface);
+  color: var(--color-ink-soft);
+  font-weight: 700;
+  font-size: 0.9375rem;
+  text-decoration: none;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.search-chip:hover {
+  background: var(--color-brand-tint);
+  border-color: var(--color-brand);
+}
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 0;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.search-thumb {
+  width: 5.5rem;
+  height: 5.5rem;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: var(--color-fill);
+}
+.search-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border-radius: 0.4375rem;
+  background: var(--color-brand-tint);
+  color: var(--color-brand-ink);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+.search-tag-muted {
+  background: var(--color-fill);
+  color: var(--color-ink-soft);
+}
+
+dialog.cs-sheet {
+  border-radius: 1.75rem;
+}
+/* Our own dropdowns (lib/custom-select.ts): the real <select> stays in the
+   form but out of sight; a button in our style opens a sheet of choices */
+select.cs-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.cs-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  cursor: pointer;
+  background-image: none !important;
+}
+.cs-trigger .cs-chevron {
+  color: var(--color-muted);
+  flex-shrink: 0;
+}
+.cs-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.375rem;
+  padding: 0 1.125rem;
+  border-radius: 1rem;
+  text-align: left;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.cs-option:hover,
+.cs-option:focus-visible {
+  background: var(--color-fill);
+  outline: none;
+}
+.cs-option[aria-selected='true'],
+.cs-option[aria-selected='true']:hover,
+.cs-option[aria-selected='true']:focus-visible {
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  font-weight: 800;
+}
+.cs-option:disabled {
+  color: var(--color-faint);
+  cursor: not-allowed;
+}
+.cs-option .cs-check {
+  color: currentColor;
+  opacity: 0;
+}
+.cs-option[aria-selected='true'] .cs-check {
+  opacity: 1;
+}
+
+/* Town tiles (choose delivery location): quiet cards, orange edge when chosen */
+.town-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.125rem;
+  min-height: 4.25rem;
+  padding: 0.75rem 2.25rem 0.75rem 1rem;
+  border-radius: 0.875rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+}
+.town-tile:active {
+  transform: scale(0.98);
+}
+.town-tile:hover {
+  border-color: var(--color-faint);
+}
+.town-tile:has(:checked) {
+  border-color: var(--color-brand);
+  background: var(--color-brand-tint);
+  box-shadow: inset 0 0 0 1px var(--color-brand);
+}
+.town-tile:has(:focus-visible) {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+.town-tile-name {
+  font-weight: 700;
+  font-size: 0.9375rem;
+  line-height: 1.25;
+  color: var(--color-ink);
+}
+.town-tile-region {
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+}
+.town-tile-check {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  margin-top: -0.6875rem;
+  padding: 0.1875rem;
+  border-radius: 999px;
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+.town-tile:has(:checked) .town-tile-check {
+  opacity: 1;
+  transform: none;
+}
+
+
+/* Content arriving in order (lib/stagger.ts): each block rises softly into
+   place a moment after the one above it */
+@keyframes st-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+.st-in {
+  animation: st-in 560ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: var(--st-d, 0ms);
+}
+.st-wait {
+  opacity: 0;
+}
+/* The blocks do the moving now, so the page's sections don't also fade as a whole */
+html.stagger-on [data-motion='page'] > *,
+html.stagger-on [data-refresh-area] > * {
+  animation-name: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-in {
+    animation: none;
+  }
+  .st-wait {
+    opacity: 1;
+  }
+}
+
+/* Search hint in the header: slides up and out, the next one slides up and in */
+.search-hint [data-hint-text] {
+  transition: transform 260ms var(--ease-soft, ease), opacity 260ms ease;
+}
+.search-hint .hint-out {
+  transform: translateY(-0.6em);
+  opacity: 0;
+}
+@keyframes hint-in {
+  from {
+    transform: translateY(0.6em);
+    opacity: 0;
+  }
+}
+.search-hint .hint-in {
+  animation: hint-in 360ms var(--ease-soft, ease) both;
+}
+
+/* Dragging the page with a mouse in the app (emulator): no text selection */
+html.is-drag-scrolling,
+html.is-drag-scrolling * {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grabbing;
+}
+
+/* =========================================================
+   Panels (vendor, rider, admin): a quieter palette
+   Working screens use colour only to mean something. Red
+   stays for actions and the current tab; status colours are
+   toned down so a busy board reads calm, not like a rainbow.
+   ========================================================= */
+.panel-ui {
+  --color-success: #166534;
+  --color-success-soft: #f0fdf4;
+  --color-warning-ink: #9a3412;
+  --color-warning-soft: #fff7ed;
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fef2f2;
+  --color-brand-ink: #b91c1c;
+  --color-brand-soft: #fef2f2;
+}
+/* Status pills are outlined, not filled: the word and a thin edge carry the colour */
+.panel-ui .badge {
+  background: transparent !important;
+  border: 1px solid color-mix(in srgb, currentColor 32%, transparent);
+}
+/* Notices: a neutral card with a thin coloured edge instead of a coloured block */
+.panel-ui .notice {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-left: 3px solid currentColor;
+}
+
+/* "Application received": the badge pops in once */
+.pending-badge {
+  animation: badge-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+}
+@keyframes badge-pop {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pending-badge { animation: none; }
+}
+
+/* On/off switch (customer Notifications page) */
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 3.25rem;
+  height: 1.875rem;
+  border-radius: 999px;
+  background: var(--color-line-strong);
+  transition: background-color 180ms ease;
+  cursor: pointer;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 0.1875rem;
+  left: 0.1875rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  transition: transform 200ms cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.switch[aria-checked='true'] {
+  background: var(--color-brand);
+}
+.switch[aria-checked='true']::after {
+  transform: translateX(1.375rem);
+}
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.switch:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* Top card on Help, Privacy, Terms, Notifications and Wallet: solid brand
+   red with white text, and a white icon tile. Flat: no glow, no gradient. */
+.notify-hero {
+  padding: 1.375rem 1.375rem 1.5rem;
+  border-radius: 1.5rem;
+  color: #fff;
+  background: var(--color-brand);
+}
+.notify-hero .text-muted,
+.notify-hero .text-ink-soft {
+  color: rgb(255 255 255 / 0.88);
+}
+.notify-hero-icon {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 1rem;
+  background: #fff;
+  color: var(--color-brand);
+}
+/* A white button on the red hero */
+.btn-on-brand {
+  background: #fff;
+  color: var(--color-brand-ink);
+}
+.btn-on-brand:hover:not(:disabled) {
+  background: #fff5f5;
+}
+.notify-hero-icon > * {
+  grid-area: 1 / 1;
+}
+.notify-hero .nh-on,
+.notify-hero[data-state='off'] .nh-on,
+.notify-hero[data-state='checking'] .nh-on {
+  display: none;
+}
+.notify-hero[data-state='on'] .nh-on {
+  display: block;
+}
+.notify-hero[data-state='on'] .nh-off {
+  display: none;
+}
+
+/* Empty states: a soft orange tile with an icon */
+.empty-tile {
+  display: grid;
+  place-items: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 1.375rem;
+  background: var(--color-brand-tint);
+  color: var(--color-brand);
+}
+
+/* The orange + on dish cards (home page) */
+.dish-add {
+  position: absolute;
+  top: 0.625rem;
+  right: 0.625rem;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  box-shadow: 0 2px 8px rgb(185 28 28 / 0.3);
+  transition: transform 150ms ease, background-color 150ms ease;
+}
+.dish-add:hover {
+  background: var(--color-brand-dark);
+}
+.dish-add:active {
+  transform: scale(0.92);
+}
+
+
+/* ---------- Phones: pop-ups rise from the bottom as sheets ----------
+   (The dropdown choices stay a floating card in the middle.) */
+@media (max-width: 639px) {
+  dialog.sheet:not(.cs-sheet) {
+    margin: auto 0 0;
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - 2.5rem - var(--sat, 0px));
+    border-radius: 1.75rem 1.75rem 0 0;
+    outline: 0;
+    padding-bottom: var(--sab, 0px);
+  }
+  dialog.sheet:not(.cs-sheet)::before {
+    content: '';
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    width: 2.5rem;
+    height: 0.3125rem;
+    margin-left: -1.25rem;
+    border-radius: 999px;
+    background: var(--color-line-strong);
+    pointer-events: none;
+    z-index: 2;
+  }
+}
+@supports (transition-behavior: allow-discrete) {
+  @media (max-width: 639px) {
+    dialog.sheet:not(.cs-sheet) {
+      transform: translateY(100%);
+      transition:
+        opacity 200ms var(--ease-out),
+        transform 420ms var(--ease-push),
+        overlay 420ms allow-discrete,
+        display 420ms allow-discrete;
+    }
+    dialog[open].sheet:not(.cs-sheet) {
+      transform: none;
+    }
+    @starting-style {
+      dialog[open].sheet:not(.cs-sheet) {
+        opacity: 0;
+        transform: translateY(100%);
+      }
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog.sheet:not(.cs-sheet) {
+    transition: none !important;
+  }
+}
+
+/* Checkout: simple stacked cards */
+.co-card {
+  padding: 1rem;
+  border-radius: 1.5rem;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+@media (min-width: 640px) {
+  .co-card {
+    padding: 1.25rem;
+  }
+}
+.co-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 1rem;
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+}
+.co-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 2.25rem;
+  padding: 0 0.875rem;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in srgb, var(--color-brand) 55%, var(--color-surface));
+  color: var(--color-ink);
+  font-size: 0.875rem;
+  font-weight: 800;
+  background: var(--color-surface);
+}
+.co-pill:hover {
+  background: var(--color-brand-tint);
+}
+.co-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-line-strong);
+  flex-shrink: 0;
+}
+.co-stepper button {
+  display: grid;
+  place-items: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  border-radius: 999px;
+  background: var(--color-fill);
+  color: var(--color-ink);
+}
+.co-stepper button:hover {
+  background: var(--color-line);
+}
+.co-pay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 4.75rem;
+  padding: 0.625rem 0.375rem;
+  border-radius: 1rem;
+  border: 1.5px solid var(--color-line-strong);
+  color: var(--color-ink-soft);
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+.co-pay:has(:checked) {
+  border-color: var(--color-brand);
+  background: var(--color-brand-tint);
+  color: var(--color-brand-ink);
+}
+.co-pay:has(:focus-visible) {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+.co-pay[hidden] {
+  display: none;
+}
+
+/* Mobile Money sheet: the waiting ring */
+.momo-spinner {
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 999px;
+  border: 5px solid var(--color-brand-soft);
+  border-top-color: var(--color-brand);
+  animation: momo-spin 0.9s linear infinite;
+}
+@keyframes momo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Support chat */
+.chat-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-paper);
+}
+.chat-top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--color-line);
+}
+.chat-bottom {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--color-line);
+}
+.chat-msg {
+  max-width: 85%;
+  padding: 0.75rem 1rem 0.5rem;
+  border-radius: 1.25rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  animation: chat-in 220ms var(--ease-out) both;
+}
+.chat-msg-bot {
+  align-self: flex-start;
+  background: var(--color-fill);
+  border-bottom-left-radius: 0.375rem;
+}
+.chat-msg-staff {
+  align-self: flex-start;
+  background: var(--color-surface);
+  border: 1.5px solid color-mix(in srgb, var(--color-brand) 40%, var(--color-surface));
+  border-bottom-left-radius: 0.375rem;
+}
+.chat-msg-me {
+  align-self: flex-end;
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  border-bottom-right-radius: 0.375rem;
+}
+.chat-who {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--color-muted);
+  margin-bottom: 0.125rem;
+}
+.chat-msg-staff .chat-who {
+  color: var(--color-brand-ink);
+}
+.chat-time {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  opacity: 0.6;
+  margin-top: 0.25rem;
+  text-align: right;
+}
+.chat-option {
+  min-width: 12rem;
+  padding: 0.75rem 1.125rem;
+  border-radius: 1rem;
+  border: 1.5px solid color-mix(in srgb, var(--color-brand) 45%, var(--color-surface));
+  background: var(--color-brand-tint);
+  color: var(--color-ink);
+  font-weight: 800;
+  font-size: 0.9375rem;
+  text-align: left;
+  animation: chat-in 260ms var(--ease-out) both;
+  transition: background-color 150ms ease, transform 120ms ease;
+}
+.chat-option:hover {
+  background: var(--color-brand-soft);
+}
+.chat-option:active {
+  transform: scale(0.98);
+}
+.chat-send {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 3.375rem;
+  height: 3.375rem;
+  border-radius: 1.125rem;
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  transition: opacity 150ms ease;
+}
+.chat-send:disabled {
+  opacity: 0.4;
+}
+@keyframes chat-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-msg,
+  .chat-option {
+    animation: none;
+  }
+}

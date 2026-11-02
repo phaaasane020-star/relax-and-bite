@@ -1,0 +1,115 @@
+---
+import { clientInfo } from '../../lib/client-info';
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Alert from '../../components/panel/Alert.astro';
+import PartnerTabs from '../../components/panel/PartnerTabs.astro';
+import ReasonDialog from '../../components/panel/ReasonDialog.astro';
+import { audit, deliveredCounts, getAllVendors, getAllZones } from '../../data/store';
+import { listAccounts, setAccountStatus } from '../../data/partners';
+import { field, flash, takeFlash } from '../../lib/actions';
+import { prettyPhone } from '../../lib/format';
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = field(form, 'action');
+  const name = field(form, 'name');
+  try {
+    if (action === 'suspend') {
+      await setAccountStatus(field(form, 'id'), 'suspended', field(form, 'reason'));
+      flash(Astro.cookies, `${name} is suspended and hidden from customers.`);
+    } else if (action === 'reactivate') {
+      await setAccountStatus(field(form, 'id'), 'approved');
+      flash(Astro.cookies, `${name} is active again.`);
+    }
+    await audit(`${Astro.locals.partner!.full_name} (admin)`, `${action === 'suspend' ? 'Suspended' : 'Reactivated'} ${name}${action === 'suspend' ? `: ${field(form, 'reason')}` : ''}`, clientInfo(Astro));
+    return Astro.redirect('/admin/vendors', 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const vendors = await getAllVendors();
+const accounts = await listAccounts({ role: 'vendor' });
+const zones = await getAllZones();
+const delivered = await deliveredCounts('vendor');
+const rows = vendors.map((v) => {
+  const account = accounts.find((a) => a.id === v.owner_account_id);
+  // A declined application keeps its store as "pending" underneath; show it as declined
+  const status = account?.status === 'rejected' ? 'declined' : v.status;
+  return { v, account, status, zone: zones.find((z) => z.id === v.zone_id)?.name ?? '', delivered: delivered.get(v.id) ?? 0 };
+});
+const success = takeFlash(Astro.cookies);
+const badge: Record<string, string> = { pending: 'bg-warning-soft text-warning-ink', approved: 'bg-success-soft text-success', suspended: 'bg-danger-soft text-danger', declined: 'bg-fill text-ink-soft' };
+---
+
+<PanelLayout title="Vendors">
+  <Alert error={error} success={success} />
+  <PartnerTabs />
+  <p class="text-sm text-muted mt-4">{rows.filter((r) => r.status === 'approved').length} live, {rows.filter((r) => r.status === 'pending').length} waiting for review</p>
+
+  <section class="card mt-6 overflow-hidden" aria-label="Vendors">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm rtable">
+        <thead class="bg-paper text-left text-muted">
+          <tr>
+            <th class="px-5 py-3 font-semibold">Store</th>
+            <th class="px-5 py-3 font-semibold">Owner</th>
+            <th class="px-5 py-3 font-semibold">Area</th>
+            <th class="px-5 py-3 font-semibold">Rating</th>
+            <th class="px-5 py-3 font-semibold">Delivered</th>
+            <th class="px-5 py-3 font-semibold">Status</th>
+            <th class="px-5 py-3 font-semibold"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          {
+            rows.map(({ v, account, status, zone, delivered }) => (
+              <tr>
+                <td class="px-5 py-3">
+                  <span class="block font-bold whitespace-nowrap">{v.name}</span>
+                  <span class:list={['block text-xs', v.is_open ? 'text-success font-semibold' : 'text-muted']}>{v.is_open ? 'Open now' : 'Closed'}</span>
+                </td>
+                <td class="px-5 py-3 whitespace-nowrap">
+                  <span class="block">{account?.full_name ?? '—'}</span>
+                  <span class="block text-xs text-muted tabular">{prettyPhone(v.phone)}</span>
+                </td>
+                <td class="px-5 py-3 whitespace-nowrap">{zone}</td>
+                <td class="px-5 py-3 tabular">{v.rating_count ? `${v.rating.toFixed(1)} (${v.rating_count})` : '—'}</td>
+                <td class="px-5 py-3 tabular">{delivered}</td>
+                <td class="px-5 py-3">
+                  <span class:list={['badge h-6 text-xs capitalize', badge[status]]}>{status}</span>
+                  {account?.status_reason && v.status === 'suspended' && <span class="block text-xs text-muted mt-1 max-w-40">{account.status_reason}</span>}
+                </td>
+                <td class="px-5 py-3 text-right whitespace-nowrap">
+                  {v.status === 'approved' && <a href={`/vendors/${v.slug}`} target="_blank" rel="noopener" class="btn btn-ghost min-h-9 text-sm text-ink">View</a>}
+                  {v.status === 'approved' && account && (
+                    <button type="button" class="btn btn-ghost min-h-9 text-sm text-danger" data-reason-open="suspend-dialog" data-id={account.id} data-name={v.name}>Suspend</button>
+                  )}
+                  {v.status === 'suspended' && account && (
+                    <form method="post" class="inline" data-confirm={`Reactivate ${v.name}?`} data-confirm-label="Reactivate">
+                      <input type="hidden" name="action" value="reactivate" />
+                      <input type="hidden" name="id" value={account.id} />
+                      <input type="hidden" name="name" value={v.name} />
+                      <button type="submit" class="btn btn-secondary min-h-9 text-sm">Reactivate</button>
+                    </form>
+                  )}
+                  {status === 'pending' && <a href="/admin/applications" class="btn btn-ghost min-h-9 text-sm">Review</a>}
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <ReasonDialog
+    id="suspend-dialog"
+    action="suspend"
+    title="Suspend vendor"
+    confirmLabel="Suspend"
+    hint="Their store is hidden from customers until you reactivate it. They see this reason when they sign in."
+    placeholder="For example, repeated customer complaints"
+  />
+</PanelLayout>

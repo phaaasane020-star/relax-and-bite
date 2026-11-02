@@ -1,0 +1,19 @@
+---
+// Wallet: balance from delivered orders, and withdrawing to MoMo.
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import WalletPanel from '../../components/panel/WalletPanel.astro';
+import { handleWithdrawForm, type WithdrawTyped } from '../../lib/withdraw-form';
+
+const account = Astro.locals.partner!;
+let error = '';
+let typed: WithdrawTyped | undefined;
+if (Astro.request.method === 'POST') {
+  const result = await handleWithdrawForm(Astro, account);
+  if (result instanceof Response) return result;
+  ({ error, typed } = result);
+}
+---
+
+<PanelLayout title="Wallet">
+  <WalletPanel error={error} typed={typed} />
+</PanelLayout>

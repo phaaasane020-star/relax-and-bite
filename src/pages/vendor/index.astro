@@ -1,0 +1,434 @@
+---
+import { clientInfo } from '../../lib/client-info';
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import OrderCard from '../../components/panel/OrderCard.astro';
+import Alert from '../../components/panel/Alert.astro';
+import Icon from '../../components/Icon.astro';
+import SoundControls from '../../components/panel/SoundControls.astro';
+import { audit, createIssue, getVendorById, getVendorOrders, ISSUE_CATEGORIES, setVendorOpen, vendorAccept, vendorDecline, vendorReady } from '../../data/store';
+import { SITE } from '../../data/site';
+import { field, flash, takeFlash } from '../../lib/actions';
+import { clock, money, prettyPhone, time12 } from '../../lib/format';
+import type { Order } from '../../data/types';
+
+const account = Astro.locals.partner!;
+const vendorId = account.vendor_id!;
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = field(form, 'action');
+  const code = field(form, 'code');
+  try {
+    if (action === 'open') {
+      await setVendorOpen(vendorId, true);
+      const now = await getVendorById(vendorId);
+      flash(
+        Astro.cookies,
+        now?.is_open
+          ? 'Your store is open. Customers can order now.'
+          : `Your store will open by itself at ${time12(now?.opens_at ?? '')}, when your hours start. Change your hours in Store settings.`,
+      );
+    } else if (action === 'close') {
+      await setVendorOpen(vendorId, false);
+      flash(Astro.cookies, 'Your store is closed. Customers can still see your menu.');
+    } else if (action === 'accept') {
+      await vendorAccept(vendorId, code);
+      flash(Astro.cookies, `${code} accepted. Start preparing it.`);
+    } else if (action === 'decline') {
+      await vendorDecline(vendorId, code, field(form, 'reason'));
+      flash(Astro.cookies, `${code} declined. The customer has been told.`);
+    } else if (action === 'ready') {
+      await vendorReady(vendorId, code);
+      flash(Astro.cookies, `${code} is ready for pickup.`);
+    } else if (action === 'report') {
+      await createIssue({
+        order_code: code || null,
+        reporter_role: 'vendor',
+        reporter_name: account.full_name,
+        reporter_phone: account.phone,
+        category: field(form, 'category'),
+        message: field(form, 'message', 600),
+      });
+      flash(Astro.cookies, 'Report sent. Our team will call you shortly.');
+      await audit(`${account.full_name} (vendor)`, `Reported a problem${code ? ` on ${code}` : ''}: ${field(form, 'category')}`, { kind: 'report', severity: 'warning', ...clientInfo(Astro) });
+    }
+    if (action !== 'report') {
+      const reason = field(form, 'reason');
+      const what: Record<string, string> = { open: 'Opened the store', close: 'Closed the store', accept: `Accepted ${code}`, decline: `Declined ${code}`, ready: `Marked ${code} ready` };
+      await audit(`${account.full_name} (vendor)`, `${what[action] ?? action}${reason ? `: ${reason}` : ''}`, { kind: 'store', ...clientInfo(Astro) });
+    }
+    return Astro.redirect('/vendor', 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const vendor = (await getVendorById(vendorId))!;
+const orders = await getVendorOrders(vendorId);
+const fresh = orders.filter((o) => o.status === 'placed').sort((a, b) => a.created_at.localeCompare(b.created_at));
+const cooking = orders.filter((o) => o.status === 'accepted' || o.status === 'preparing').sort((a, b) => a.created_at.localeCompare(b.created_at));
+const ready = orders.filter((o) => o.status === 'ready' || o.status === 'picked_up');
+
+const today = new Date().toISOString().slice(0, 10);
+const todays = orders.filter((o) => o.created_at.slice(0, 10) === today && o.status !== 'cancelled');
+const sales = todays.reduce((s, o) => s + o.subtotal, 0);
+
+// Finished today: delivered (with the time and how it was confirmed) and cancelled
+const eventAt = (o: Order, status: string) => o.events.find((e) => e.status === status);
+const doneToday = orders
+  .filter((o) => (o.status === 'delivered' || o.status === 'cancelled') && (eventAt(o, o.status)?.at ?? o.created_at).slice(0, 10) === today)
+  .sort((a, b) => (eventAt(b, b.status)?.at ?? '').localeCompare(eventAt(a, a.status)?.at ?? ''));
+const firstName = (name: string) => name.split(' ')[0];
+
+// What the page compares between refreshes to raise alerts
+const snapshot = JSON.stringify(
+  Object.fromEntries(
+    orders
+      .filter((o) => o.created_at.slice(0, 10) === today || !['delivered', 'cancelled'].includes(o.status))
+      .map((o) => [
+        o.code,
+        {
+          status: o.status,
+          rider: o.rider_name,
+          info: o.status === 'delivered' && (eventAt(o, 'delivered')?.note ?? '').startsWith('Confirmed by admin') ? 'support' : '',
+        },
+      ]),
+  ),
+).replace(/</g, '\\u003c');
+const success = takeFlash(Astro.cookies);
+const dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Accra' });
+
+const declineReasons = ['Item sold out', 'Kitchen too busy', 'Closing soon', 'Other'];
+
+// One stage of the board at a time. Opens on the stage that needs them first.
+const firstTab = fresh.length ? 'new' : cooking.length ? 'prep' : ready.length ? 'ready' : 'new';
+const TABS = [
+  { key: 'new', label: 'New', count: fresh.length },
+  { key: 'prep', label: 'Preparing', count: cooking.length },
+  { key: 'ready', label: 'Ready', count: ready.length },
+  { key: 'done', label: 'Done today', short: 'Done', count: doneToday.length },
+];
+---
+
+<PanelLayout title="Orders" refresh={20}>
+  <Alert error={error} success={success} />
+
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Orders</h1>
+      <p class="text-sm text-muted mt-1">{dateLabel}</p>
+      <SoundControls class="mt-3" />
+    </div>
+    <dl class="flex flex-wrap gap-8">
+      <div><dt class="text-[0.8125rem] font-semibold text-muted">Orders today</dt><dd class="text-xl font-extrabold tabular">{todays.length}</dd></div>
+      <div><dt class="text-[0.8125rem] font-semibold text-muted">Food sales today</dt><dd class="text-xl font-extrabold tabular">{money(sales)}</dd></div>
+    </dl>
+  </div>
+
+  <!-- Open / closed -->
+  {!vendor.opens_at ? (
+  <section class="mt-6 rounded-[0.875rem] border border-brand/30 bg-brand-tint p-4 flex flex-wrap items-center justify-between gap-4" aria-label="Store status">
+    <div class="flex items-center gap-3">
+      <span class="size-10 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0"><Icon name="clock" size={20} /></span>
+      <div>
+        <p class="font-extrabold">Set your opening hours</p>
+        <p class="text-sm text-muted">Your store stays closed until you add the hours you open and close.</p>
+      </div>
+    </div>
+    <a href="/vendor/settings#hours" class="btn btn-primary no-underline">Set hours</a>
+  </section>
+  ) : (
+  <section
+    class:list={[
+      'mt-6 rounded-2xl border-2 p-5 flex flex-col gap-4',
+      vendor.is_open ? 'border-success/40 bg-success-soft' : 'border-line bg-raised',
+    ]}
+    aria-label="Store status"
+  >
+    <div class="flex items-center gap-3">
+      <span class:list={['size-4 rounded-full shrink-0', vendor.is_open ? 'bg-success live-dot' : vendor.accepting ? 'bg-star' : 'bg-faint']}></span>
+      <div class="min-w-0">
+        <p class:list={['text-xl font-extrabold', vendor.is_open ? 'text-success' : 'text-ink']}>
+          {vendor.is_open ? 'Your store is OPEN' : 'Your store is CLOSED'}
+        </p>
+        <p class="text-[0.9375rem] text-ink-soft">
+          {
+            vendor.is_open
+              ? `Customers can order now. You close at ${time12(vendor.closes_at)}.`
+              : vendor.accepting
+                ? `It opens by itself at ${time12(vendor.opens_at)}.`
+                : 'Customers can\'t order. Tap the button when you are ready.'
+          }
+        </p>
+      </div>
+    </div>
+    {
+      vendor.accepting ? (
+        <form method="post" data-confirm="Close your store?" data-confirm-message="Customers won't be able to order until you open again. Orders already placed stay here." data-confirm-label="Close store">
+          <input type="hidden" name="action" value="close" />
+          <button type="submit" class="btn btn-secondary btn-lg w-full">Close store</button>
+        </form>
+      ) : (
+        <form method="post">
+          <input type="hidden" name="action" value="open" />
+          <button type="submit" class="btn btn-primary btn-lg w-full">Open store</button>
+        </form>
+      )
+    }
+  </section>
+  )}
+
+  <!-- Board: one stage at a time, picked with these tabs -->
+  <div role="tablist" aria-label="Order stage" class="seg mt-8 md:max-w-xl" data-board-tabs>
+    {
+      TABS.map((t) => (
+        <button type="button" role="tab" data-tab={t.key} aria-selected={t.key === firstTab ? 'true' : 'false'} class="flex items-center justify-center gap-1.5 px-1">
+          <span class="truncate">{t.short ? <><span class="sm:hidden">{t.short}</span><span class="max-sm:hidden">{t.label}</span></> : t.label}</span>
+          {t.count > 0 && (
+            <span class:list={['min-w-5 h-5 px-1.5 rounded-full text-[0.6875rem] font-extrabold flex items-center justify-center', t.key === 'new' ? 'bg-brand text-on-brand' : 'bg-line text-ink-soft']}>{t.count}</span>
+          )}
+        </button>
+      ))
+    }
+  </div>
+  <div class="mt-5" data-board>
+    <section aria-labelledby="col-new" class="board-col" data-col="new" hidden={firstTab !== 'new'}>
+      <h2 id="col-new" class="sr-only">New orders</h2>
+      {fresh.length === 0 && (
+        <div class="board-empty">
+          <span class="board-empty-icon"><Icon name="receipt" size={22} /></span>
+          <p class="font-bold">No new orders</p>
+          <p class="text-sm text-muted">When a customer orders, it shows here and your phone rings.</p>
+        </div>
+      )}
+      {
+        fresh.map((o) => (
+          <OrderCard order={o} highlight>
+            <div class="flex gap-2">
+              <form method="post" class="flex-1">
+                <input type="hidden" name="action" value="accept" />
+                <input type="hidden" name="code" value={o.code} />
+                <button type="submit" class="btn btn-primary w-full">Accept</button>
+              </form>
+              <details class="relative">
+                <summary class="btn btn-secondary list-none [&::-webkit-details-marker]:hidden">Decline</summary>
+                <form
+                  method="post"
+                  class="absolute right-0 z-10 mt-2 w-64 card p-3 flex flex-col gap-2 shadow-lg"
+                  data-confirm={`Decline ${o.code}?`}
+                  data-confirm-message="The customer will be told, and online payments are refunded."
+                  data-confirm-label="Decline order"
+                  data-confirm-danger="true"
+                >
+                  <input type="hidden" name="action" value="decline" />
+                  <input type="hidden" name="code" value={o.code} />
+                  <label class="field-label mb-0" for={`reason-${o.code}`}>Reason</label>
+                  <select id={`reason-${o.code}`} name="reason" class="field-input">
+                    {declineReasons.map((r) => <option>{r}</option>)}
+                  </select>
+                  <button type="submit" class="btn btn-danger w-full">Decline order</button>
+                </form>
+              </details>
+            </div>
+          </OrderCard>
+        ))
+      }
+    </section>
+
+    <section aria-labelledby="col-prep" class="board-col" data-col="prep" hidden={firstTab !== 'prep'}>
+      <h2 id="col-prep" class="sr-only">Preparing</h2>
+      {cooking.length === 0 && (
+        <div class="board-empty">
+          <span class="board-empty-icon"><Icon name="dish" size={22} /></span>
+          <p class="font-bold">Nothing cooking</p>
+          <p class="text-sm text-muted">Orders you accept move here until you mark them ready.</p>
+        </div>
+      )}
+      {
+        cooking.map((o) => (
+          <OrderCard order={o} lateAfter={vendor.prep_time_max}>
+            <p class="text-sm font-semibold flex items-center gap-2">
+              <Icon name={o.rider_id ? 'bike' : 'clock'} size={16} class={o.rider_id ? 'text-brand' : 'text-muted'} />
+              {o.rider_id
+                ? `${firstName(o.rider_name)} accepted${o.rider_assigned_at ? ` at ${clock(o.rider_assigned_at)}` : ''}. Coming to collect when it's ready.`
+                : 'No rider yet. One will take it soon.'}
+            </p>
+            <form method="post">
+              <input type="hidden" name="action" value="ready" />
+              <input type="hidden" name="code" value={o.code} />
+              <button type="submit" class="btn btn-primary w-full">Mark as ready</button>
+            </form>
+          </OrderCard>
+        ))
+      }
+    </section>
+
+    <section aria-labelledby="col-ready" class="board-col" data-col="ready" hidden={firstTab !== 'ready'}>
+      <h2 id="col-ready" class="sr-only">Ready and on the way</h2>
+      {ready.length === 0 && (
+        <div class="board-empty">
+          <span class="board-empty-icon"><Icon name="bike" size={22} /></span>
+          <p class="font-bold">Nothing waiting for a rider</p>
+          <p class="text-sm text-muted">Ready orders wait here until the rider collects them.</p>
+        </div>
+      )}
+      {
+        ready.map((o) => (
+          <OrderCard order={o}>
+            <p class="text-sm font-semibold flex items-center gap-2">
+              <Icon name={o.status === 'picked_up' || o.rider_id ? 'bike' : 'clock'} size={16} class={o.status === 'picked_up' || o.rider_id ? 'text-brand' : 'text-muted'} />
+              {o.status === 'picked_up'
+                ? `${firstName(o.rider_name)} picked it up${eventAt(o, 'picked_up') ? ` at ${clock(eventAt(o, 'picked_up')!.at)}` : ''}. On the way to the customer.`
+                : o.rider_id
+                  ? `${firstName(o.rider_name)} accepted${o.rider_assigned_at ? ` at ${clock(o.rider_assigned_at)}` : ''}. Coming to collect.`
+                  : 'Waiting for a rider'}
+            </p>
+            {o.status === 'ready' && o.rider_id && (
+              <p class="text-[0.8125rem] text-muted -mt-1">Only hand over to the rider shown above. Check their face and order number {o.code}.</p>
+            )}
+            <button type="button" class="btn btn-ghost text-ink-soft text-sm self-start -ml-2 min-h-9" data-report={o.code}>
+              <Icon name="alert" size={16} /> Report a problem
+            </button>
+          </OrderCard>
+        ))
+      }
+    </section>
+  <!-- Finished today -->
+  <section aria-labelledby="done-h" data-col="done" hidden>
+    <h2 id="done-h" class="sr-only">Done today</h2>
+    {
+      doneToday.length === 0 ? (
+        <div class="board-empty">
+          <span class="board-empty-icon"><Icon name="check" size={22} /></span>
+          <p class="font-bold">Nothing finished yet today</p>
+          <p class="text-sm text-muted">Delivered and cancelled orders from today show here.</p>
+        </div>
+      ) : (
+        <ul class="card divide-y divide-line">
+          {doneToday.map((o) => {
+            const end = eventAt(o, o.status);
+            const byAdmin = o.status === 'delivered' && (end?.note ?? '').startsWith('Confirmed by admin');
+            return (
+              <li class="p-4 flex flex-wrap items-start gap-x-4 gap-y-1">
+                <span class:list={['size-9 rounded-full flex items-center justify-center shrink-0', o.status === 'delivered' ? 'bg-success-soft text-success' : 'bg-fill text-muted']}>
+                  <Icon name={o.status === 'delivered' ? 'check' : 'x'} size={18} />
+                </span>
+                <div class="flex-1 min-w-0">
+                  <p class="font-bold tabular">
+                    {o.code}
+                    <span class="font-semibold text-muted"> · {o.items.reduce((n, i) => n + i.quantity, 0)} items</span>
+                  </p>
+                  {o.status === 'delivered' ? (
+                    <p class="text-sm text-ink-soft">
+                      Delivered{end ? ` at ${clock(end.at)}` : ''} by {o.rider_name || 'the rider'}.{' '}
+                      <span class={byAdmin ? 'text-warning-ink' : 'text-success'}>{byAdmin ? 'Confirmed by Relax&Bite support.' : 'Code confirmed by the customer.'}</span>
+                    </p>
+                  ) : (
+                    <p class="text-sm text-muted">
+                      Cancelled{end ? ` at ${clock(end.at)}` : ''}{o.cancel_reason ? `: ${o.cancel_reason}` : '.'}
+                    </p>
+                  )}
+                </div>
+                <span class="flex flex-col items-end gap-1.5">
+                  <span class:list={['badge h-6 text-xs', o.status === 'delivered' ? 'bg-success-soft text-success' : 'bg-fill text-ink-soft']}>
+                    {o.status === 'delivered' ? 'Delivered' : 'Cancelled'}
+                  </span>
+                  <span class:list={['font-extrabold tabular', o.status === 'cancelled' && 'line-through text-faint']}>{money(o.subtotal)}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )
+    }
+  </section>
+  </div>
+
+  <p class="mt-8 text-sm text-muted">
+    Problem with a customer or rider? <button type="button" class="font-bold text-brand" data-report="">Report it</button> or call support on
+    <a href={`tel:${SITE.supportPhone}`} class="font-bold text-ink">{prettyPhone(SITE.supportPhone)}</a>.
+  </p>
+
+  <dialog id="report-dialog" class="sheet" aria-labelledby="report-title">
+    <form method="post" class="p-6 flex flex-col gap-4">
+      <input type="hidden" name="action" value="report" />
+      <input type="hidden" name="code" />
+      <div>
+        <h2 id="report-title" class="text-lg font-extrabold">Report a problem</h2>
+        <p class="text-sm text-muted mt-1" data-report-for></p>
+      </div>
+      <div>
+        <label for="report-category" class="field-label">What's wrong?</label>
+        <select id="report-category" name="category" class="field-input">
+          {ISSUE_CATEGORIES.vendor.map((c) => <option>{c}</option>)}
+        </select>
+      </div>
+      <div>
+        <label for="report-message" class="field-label">Details <span class="text-muted font-medium">(optional)</span></label>
+        <textarea id="report-message" name="message" rows="3" class="field-input" maxlength="600"></textarea>
+      </div>
+      <div class="flex gap-3">
+        <button type="button" data-close class="btn btn-secondary flex-1">Back</button>
+        <button type="submit" class="btn btn-primary flex-1">Send report</button>
+      </div>
+    </form>
+  </dialog>
+  <script type="application/json" id="board-snapshot" set:html={snapshot}></script>
+</PanelLayout>
+
+<script>
+  import { announce, collectAlerts, type Snapshot } from '../../lib/panel-alerts';
+
+  // ---- Alerts when riders accept, pick up and deliver ----
+  const first = (name: string) => name.split(' ')[0] || 'The rider';
+  const snap = JSON.parse(document.getElementById('board-snapshot')?.textContent || '{}') as Snapshot;
+  const alerts = collectAlerts('rb_vendor_snap', snap, (code, before, after) => {
+    if (!before) return after.status === 'placed' ? { tone: 'new', text: `New order ${code}. Accept it so the kitchen can start.` } : null;
+    if (after.status === 'cancelled') return { tone: 'warn', text: `${code} was cancelled.` };
+    if (after.status === 'delivered')
+      return {
+        tone: 'done',
+        text: after.info === 'support' ? `${code} delivered. Relax&Bite support confirmed it with the customer.` : `${code} delivered by ${first(after.rider)}. The customer confirmed with their code.`,
+      };
+    if (after.status === 'picked_up' && before.status !== 'picked_up') return { tone: 'info', text: `${first(after.rider)} picked up ${code}.` };
+    if (after.rider && after.rider !== before.rider) return { tone: 'info', text: `${first(after.rider)} accepted ${code} and is coming to collect it.` };
+    return null;
+  });
+
+  announce(alerts);
+
+  // Phone tabs for the order board. Remembers the tab across the 20-second refresh.
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>('[data-board-tabs] [data-tab]')];
+  const cols = [...document.querySelectorAll<HTMLElement>('[data-col]')];
+  const showCol = (key: string) => {
+    tabs.forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === key)));
+    cols.forEach((c) => (c.hidden = c.dataset.col !== key));
+    try {
+      sessionStorage.setItem('rb_vendor_tab', key);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  tabs.forEach((t) => t.addEventListener('click', () => showCol(t.dataset.tab!)));
+  let savedTab: string | null = null;
+  try {
+    savedTab = sessionStorage.getItem('rb_vendor_tab');
+  } catch {
+    savedTab = null;
+  }
+  // Keep their tab across the refresh, unless a new order has come in
+  const hasNew = (document.querySelector('[data-col="new"] .board-empty') === null);
+  if (savedTab && !hasNew && tabs.some((t) => t.dataset.tab === savedTab)) showCol(savedTab);
+
+  const dialog = document.getElementById('report-dialog') as HTMLDialogElement;
+  const form = dialog.querySelector('form')!;
+  document.querySelectorAll<HTMLButtonElement>('[data-report]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      form.reset();
+      (form.elements.namedItem('code') as HTMLInputElement).value = btn.dataset.report ?? '';
+      dialog.querySelector('[data-report-for]')!.textContent = btn.dataset.report ? `About order ${btn.dataset.report}.` : 'Our team will call you back.';
+      dialog.showModal();
+    }),
+  );
+</script>

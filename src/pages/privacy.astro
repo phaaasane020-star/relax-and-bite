@@ -1,0 +1,151 @@
+---
+// Privacy Policy. Written for Ghana's Data Protection Act, 2012 (Act 843).
+// TODO before launch: have a lawyer review this, register with the Data
+// Protection Commission, and fill in SITE.legalName, address and contacts.
+import LegalPage from '../components/LegalPage.astro';
+import { SITE } from '../data/site';
+import { prettyPhone } from '../lib/format';
+
+const sections = [
+  { id: 'who', title: 'Who we are' },
+  { id: 'collect', title: 'What we collect' },
+  { id: 'use', title: 'How we use it' },
+  { id: 'share', title: 'Who we share it with' },
+  { id: 'location', title: 'Your location' },
+  { id: 'storage', title: 'Cookies and device storage' },
+  { id: 'keep', title: 'How long we keep it' },
+  { id: 'security', title: 'Keeping it safe' },
+  { id: 'rights', title: 'Your rights' },
+  { id: 'children', title: 'Children' },
+  { id: 'changes', title: 'Changes to this policy' },
+  { id: 'contact', title: 'Contact us' },
+];
+---
+
+<LegalPage title="Privacy Policy" sections={sections} icon="shield" heading="How Relax&Bite protects your data">
+  <p>
+    This policy explains what personal information {SITE.name} collects when you use our app and website, why we
+    collect it, who we share it with and the choices you have. We follow the Data Protection Act, 2012 (Act 843) of
+    Ghana.
+  </p>
+
+  <h2 id="who">Who we are</h2>
+  <p>
+    {SITE.legalName} ("{SITE.name}", "we", "us") runs a food ordering service that connects customers with
+    restaurants, chop bars and delivery riders, starting in {SITE.area}. We are responsible for the personal
+    information described in this policy. Our address is {SITE.address}.
+  </p>
+
+  <h2 id="collect">What we collect</h2>
+  <h3>When you order</h3>
+  <ul>
+    <li><strong>Your email address</strong>, used to sign you in (with a one-time code or through Google). If you sign in with Google we receive your name and email address from Google, nothing else.</li>
+    <li><strong>Your phone number</strong>, given at checkout so the restaurant and rider can contact you about your order.</li>
+    <li><strong>Your name</strong>, if you give it, so the restaurant and rider know who the order is for.</li>
+    <li><strong>Delivery details</strong>: your town, landmark, house number or GhanaPost GPS address, and delivery notes.</li>
+    <li><strong>Your location</strong>, only if you allow it (see "Your location" below).</li>
+    <li><strong>Orders</strong>: what you ordered, from whom, when, the amount and how you paid.</li>
+    <li><strong>Payment details</strong>: payments are handled by our payment provider, Paystack. We receive a payment reference and the result. We never see or store your card number or Mobile Money PIN.</li>
+    <li><strong>Reports and messages</strong> you send us, such as a problem with an order, and any photos you add.</li>
+    <li><strong>Usage information</strong>: pages and restaurants viewed, items added to your bag, device and browser type, and a random visitor number stored on your device.</li>
+  </ul>
+  <h3>When you join as a restaurant or rider</h3>
+  <ul>
+    <li>Your name, phone number and password (stored only in scrambled form). Your phone number is also how you sign in.</li>
+    <li>For restaurants: business name, address, town, opening hours, menu and photos.</li>
+    <li>For riders: Ghana Card number and photo, a passport-size photo, vehicle type and number plate, and an emergency contact.</li>
+    <li>Payout details, such as a Mobile Money number or bank account, so we can pay you.</li>
+    <li>Sales, deliveries and earnings records.</li>
+  </ul>
+
+  <h2 id="use">How we use it</h2>
+  <ul>
+    <li>To take your order, pass it to the restaurant, arrange delivery and keep you updated.</li>
+    <li>To sign you in with a one-time email code or with Google, and to email order alerts to restaurants and riders.</li>
+    <li>To keep everyone safe: the 4-digit delivery code, showing you your rider's name and photo, checking riders' Ghana Cards, and investigating reports.</li>
+    <li>To prevent fraud and fake orders, for example by limiting cash on delivery.</li>
+    <li>To answer your questions, handle refunds and resolve complaints.</li>
+    <li>To give restaurants and riders reports on their sales and visits. These reports show totals, not who you are.</li>
+    <li>To understand how the service is used and make it better.</li>
+    <li>To meet our legal, tax and accounting duties.</li>
+  </ul>
+  <p>
+    We send you service messages about your orders. We will only send you offers and promotions if you agree, and you
+    can stop them at any time.
+  </p>
+
+  <h2 id="share">Who we share it with</h2>
+  <ul>
+    <li><strong>The restaurant</strong> you order from receives your name, phone number and order.</li>
+    <li><strong>Your rider</strong> receives your name, phone number, delivery address, landmark and notes. Riders see this only for orders they are delivering.</li>
+    <li><strong>Service providers</strong> who help us run {SITE.name}: payments (Paystack), email delivery (Resend), sign-in (Google), and secure hosting and databases. They may only use your information to provide their service to us. Some store data on servers outside Ghana; when that happens we make sure your information stays protected as Act 843 requires.</li>
+    <li><strong>Authorities</strong>, when the law requires it or to protect someone's safety.</li>
+  </ul>
+  <p><strong>We do not sell your personal information.</strong></p>
+
+  <h2 id="location">Your location</h2>
+  <p>
+    If you allow it, we use your device's location to check that you are inside one of our delivery towns, to suggest
+    your town and to help your rider find you. We only read your location while you are using the app, when you tap
+    "Allow location" or "Use my location". You can say no and choose your area yourself, and you can turn location off
+    at any time in your phone or browser settings.
+  </p>
+
+  <h2 id="storage">Cookies and device storage</h2>
+  <p>We store a few small pieces of information on your device so the app works:</p>
+  <ul>
+    <li>whether you are signed in;</li>
+    <li>your chosen delivery area;</li>
+    <li>the orders placed from this device, so you can see them without signing in;</li>
+    <li>your bag and your favourites;</li>
+    <li>whether you have seen the welcome screens;</li>
+    <li>a random visitor number used to count visits.</li>
+  </ul>
+  <p>We do not use advertising cookies. Clearing your browser or app data removes this information from your device.</p>
+
+  <h2 id="keep">How long we keep it</h2>
+  <ul>
+    <li>Order and payment records: as long as tax and accounting law requires.</li>
+    <li>Your account: until you ask us to delete it. Some order records may need to be kept after that for legal reasons.</li>
+    <li>Rider and restaurant documents: while the partner account is active, and for a limited time afterwards to deal with any complaints or legal claims.</li>
+    <li>Usage information: in summary form only after 12 months.</li>
+  </ul>
+
+  <h2 id="security">Keeping it safe</h2>
+  <p>
+    We use encrypted connections, scrambled passwords, limited staff access and sign-in lockouts after repeated failed
+    attempts. No system is perfectly secure, so please keep your email account and sign-in codes to yourself. We will never ask for
+    your sign-in code, Mobile Money PIN or card PIN.
+  </p>
+
+  <h2 id="rights">Your rights</h2>
+  <p>Under the Data Protection Act, 2012 (Act 843), you can:</p>
+  <ul>
+    <li>ask for a copy of the personal information we hold about you;</li>
+    <li>ask us to correct information that is wrong;</li>
+    <li>ask us to delete your information or your account;</li>
+    <li>object to us using your information for marketing;</li>
+    <li>complain to the Data Protection Commission of Ghana if you are unhappy with how we handle your information.</li>
+  </ul>
+  <p>To use any of these rights, contact us using the details below. We may ask you to confirm your phone number first.</p>
+
+  <h2 id="children">Children</h2>
+  <p>
+    You must be 18 or older to create an account. We do not knowingly collect information from children. If you think a
+    child has given us their information, contact us and we will delete it.
+  </p>
+
+  <h2 id="changes">Changes to this policy</h2>
+  <p>
+    We may update this policy as the service grows. We will show the new date at the top and, for important changes,
+    tell you in the app before they take effect.
+  </p>
+
+  <h2 id="contact">Contact us</h2>
+  <ul>
+    <li>Phone: <a href={`tel:${SITE.supportPhone}`}>{prettyPhone(SITE.supportPhone)}</a></li>
+    <li>Support chat: <a href="/help/chat">chat with us in the app</a></li>
+    <li>Email: <a href={`mailto:${SITE.supportEmail}`}>{SITE.supportEmail}</a></li>
+    <li>Post: {SITE.legalName}, {SITE.address}</li>
+  </ul>
+</LegalPage>

@@ -1,0 +1,128 @@
+---
+// Top of the site: where we're delivering, order updates, cart, and search.
+// On phones: "Deliver to" + town with the bell and bag on the right, and the
+// search box underneath with a hint that changes every few seconds.
+// It shows on phones only when `mobile` is "full"; pages with their own
+// back-button bar pass "none".
+import Icon from './Icon.astro';
+import { getLocation, getUser } from '../lib/session';
+import { getZone } from '../data/store';
+
+interface Props {
+  /** Phones: 'full' = town, icons and search; 'top' = town and icons only; 'none' = no header */
+  mobile?: 'full' | 'top' | 'none';
+  query?: string;
+}
+const { mobile = 'top', query = '' } = Astro.props;
+
+const loc = getLocation(Astro.cookies);
+const zone = loc ? await getZone(loc.zoneId) : undefined;
+const locationLabel = zone ? zone.name : 'Choose your town';
+// Search hints, one at a time
+const hints = ['What are you craving?', 'Jollof, waakye, banku…', 'Fried rice and chicken', 'Kenkey and fried fish', 'Pizza, burgers, shawarma', 'Search restaurants or dishes'];
+const user = getUser(Astro.cookies);
+const here = Astro.url.pathname + Astro.url.search;
+const locationHref = `/location?next=${encodeURIComponent(here)}`;
+---
+
+<header class:list={['vt-header bg-surface md:border-b md:border-line pt-[var(--sat)]', mobile === 'none' && 'hidden md:block']}>
+  <div class="container-app pt-3 pb-2 md:py-0 md:h-18 flex flex-wrap md:flex-nowrap items-center gap-x-4 gap-y-3">
+    <!-- Delivery area -->
+    <a
+      href={locationHref}
+      data-open="location"
+      class="order-1 md:order-none flex flex-col min-w-0 flex-1 md:flex-none md:max-w-64 no-underline text-ink leading-tight"
+      aria-label={zone ? `Deliver to ${locationLabel}. Change town` : 'Choose your town'}
+    >
+      <span class="flex items-center gap-1 text-[0.8125rem] font-semibold text-muted">
+        <Icon name="pin" size={15} strokeWidth={2.2} class="text-brand shrink-0" />
+        Deliver to
+      </span>
+      <span class="flex items-center gap-1 min-w-0 text-lg md:text-base font-extrabold tracking-tight mt-0.5">
+        <span class="truncate">{locationLabel}</span>
+        <Icon name="chevron-down" size={18} strokeWidth={2.4} class="shrink-0 text-ink-soft" />
+      </span>
+    </a>
+
+    <!-- Search: its own row on phones, inline on bigger screens.
+         On phones the box opens the Search page (recent searches, popular
+         food types, results as you type); bigger screens type right here. -->
+    <form action="/search" method="get" role="search" class:list={['order-3 md:order-none basis-full md:basis-auto md:flex-1 md:max-w-xl', mobile === 'top' && 'hidden md:block']}>
+      <a href={query ? `/search?q=${encodeURIComponent(query)}` : '/search'} class="search-box md:hidden flex items-center gap-2.5 h-12 px-4 bg-fill rounded-full text-muted no-underline" aria-label="Search food or restaurants">
+        <Icon name="search" size={20} class="shrink-0" />
+        <span data-search-hint aria-hidden="true" class="search-hint relative flex-1 min-w-0 h-full flex items-center text-[0.9375rem] overflow-hidden">
+          {query ? <span class="truncate text-ink">{query}</span> : <span data-hint-text class="truncate text-faint">{hints[0]}</span>}
+        </span>
+      </a>
+      <label class="search-box hidden md:flex items-center gap-2.5 h-11 px-4 bg-fill rounded-full text-muted">
+        <Icon name="search" size={20} class="shrink-0" />
+        <span class="relative flex-1 min-w-0 h-full flex items-center">
+          <input
+            type="search"
+            name="q"
+            value={query}
+            aria-label="Search food or restaurants"
+            placeholder=" "
+            autocomplete="off"
+            class="peer w-full border-0 bg-transparent p-0 text-[0.9375rem] text-ink focus:ring-0"
+          />
+          <span data-search-hint aria-hidden="true" class="search-hint absolute inset-0 flex items-center pointer-events-none text-[0.9375rem] text-faint overflow-hidden peer-[:not(:placeholder-shown)]:hidden">
+            <span data-hint-text class="truncate">{hints[0]}</span>
+          </span>
+        </span>
+      </label>
+      <script type="application/json" data-search-hints set:html={JSON.stringify(hints)}></script>
+    </form>
+
+    <!-- Order updates, account and cart -->
+    <div class="order-2 md:order-none flex items-center gap-2 md:ml-auto shrink-0">
+      {
+        user ? (
+          <a href="/account" class="icon-btn icon-btn-round hidden md:inline-flex" aria-label="Your account">
+            <Icon name="user" size={21} />
+          </a>
+        ) : (
+          <span class="hidden md:inline-flex items-center gap-2">
+            <a href="/login" data-open="auth" class="btn btn-ghost min-h-11 px-3.5">Sign in</a>
+            <a href="/login" data-open="auth" data-auth-mode="signup" class="btn btn-primary min-h-11 px-4">Sign up</a>
+          </span>
+        )
+      }
+      <a href="/orders" class="icon-btn icon-btn-round" aria-label="Order updates">
+        <Icon name="bell" size={21} strokeWidth={1.8} />
+      </a>
+      <a href="/cart" data-open="cart" data-fly-target class="icon-btn icon-btn-round relative" aria-label="Cart">
+        <Icon name="bag" size={21} strokeWidth={1.8} />
+        <span
+          data-cart-count
+          hidden
+          class="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-brand text-on-brand text-xs font-bold flex items-center justify-center"
+          >0</span
+        >
+      </a>
+    </div>
+  </div>
+</header>
+
+<script>
+  // The search hint changes every few seconds while the box is empty
+  document.querySelectorAll<HTMLElement>('[data-search-hint]').forEach((hint) => {
+    const form = hint.closest('form')!;
+    const hints = JSON.parse(form.querySelector('[data-search-hints]')?.textContent || '[]') as string[];
+    const text = hint.querySelector<HTMLElement>('[data-hint-text]');
+    const input = form.querySelector<HTMLInputElement>('input[name="q"]')!;
+    if (!text || hints.length < 2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let i = 0;
+    window.setInterval(() => {
+      if (document.visibilityState !== 'visible' || input.value || document.activeElement === input) return;
+      text.classList.add('hint-out');
+      window.setTimeout(() => {
+        i = (i + 1) % hints.length;
+        text.textContent = hints[i];
+        text.classList.remove('hint-out');
+        text.classList.add('hint-in');
+        window.setTimeout(() => text.classList.remove('hint-in'), 400);
+      }, 260);
+    }, 3200);
+  });
+</script>

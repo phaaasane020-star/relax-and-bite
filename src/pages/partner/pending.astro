@@ -1,0 +1,58 @@
+---
+import PartnerAuthLayout from '../../layouts/PartnerAuthLayout.astro';
+import Icon from '../../components/Icon.astro';
+import { getSessionAccount, homeFor } from '../../data/partners';
+import { getPartnerToken } from '../../lib/session';
+import { SITE } from '../../data/site';
+import { prettyPhone } from '../../lib/format';
+
+const account = await getSessionAccount(getPartnerToken(Astro.cookies));
+if (!account) return Astro.redirect('/partner/login');
+if (account.status === 'approved') return Astro.redirect(homeFor(account));
+
+const isNew = Astro.url.searchParams.get('new') === '1';
+
+const content = {
+  pending: {
+    icon: 'check',
+    tone: 'bg-brand text-on-brand',
+    title: isNew ? 'Application received' : 'Your application is being reviewed',
+    body: `${SITE.name} will reach out shortly to continue your onboarding. We may call you on ${prettyPhone(account.phone)}.`,
+  },
+  rejected: {
+    icon: 'info',
+    tone: 'bg-danger-soft text-danger',
+    title: 'We could not approve your application',
+    body: account.status_reason || 'Contact us to find out more.',
+  },
+  suspended: {
+    icon: 'lock',
+    tone: 'bg-danger-soft text-danger',
+    title: 'Your account is paused',
+    body: account.status_reason || 'Contact us to find out more.',
+  },
+  approved: { icon: 'check', tone: '', title: '', body: '' },
+}[account.status] as { icon: 'info' | 'lock' | 'check'; tone: string; title: string; body: string };
+---
+
+<PartnerAuthLayout title="Application status" back="/">
+  <div class="container-app min-h-[calc(100dvh-10rem)] flex items-center justify-center py-12">
+    <div class="w-full max-w-md flex flex-col items-center text-center">
+      <span class:list={['pending-badge size-24 rounded-[1.75rem] flex items-center justify-center', content.tone]}>
+        <Icon name={content.icon} size={44} strokeWidth={2.4} />
+      </span>
+      <h1 class="text-[1.75rem] leading-tight font-extrabold tracking-tight mt-7">{content.title}</h1>
+      <p class="text-[1.0625rem] text-muted font-medium mt-3 max-w-sm">{content.body}</p>
+
+      <div class="w-full flex flex-col gap-3 mt-9">
+        <a href="/" class="btn btn-primary btn-lg w-full no-underline">Go home</a>
+        <a href={`https://wa.me/${SITE.supportWhatsApp}`} target="_blank" rel="noopener" class="btn btn-lg w-full bg-fill text-ink border-0 no-underline hover:brightness-95">
+          <Icon name="chat" size={19} /> Message us on WhatsApp
+        </a>
+      </div>
+      <form method="post" action="/partner/logout" class="mt-5">
+        <button type="submit" class="text-sm font-semibold text-muted hover:text-ink">Sign out</button>
+      </form>
+    </div>
+  </div>
+</PartnerAuthLayout>

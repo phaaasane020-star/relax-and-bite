@@ -1,0 +1,51 @@
+---
+// Tap the food types you sell (no typing commas). Up to 6, plus a box for
+// anything not in the list.
+import { vendorFoodTypes } from '../data/catalog';
+interface Props {
+  selected?: string[];
+  idPrefix: string;
+}
+const { selected = [], idPrefix } = Astro.props;
+const chosen = new Set(selected.map((s) => s.toLowerCase()));
+// Anything they had that isn't a chip goes in the "Something else" box
+const other = selected.filter((s) => !vendorFoodTypes.some((t) => t.toLowerCase() === s.toLowerCase())).join(', ');
+---
+
+<fieldset class="flex flex-col gap-2.5" data-food-picker>
+  <legend class="field-label">What food do you sell? <span class="text-muted font-medium">(tap up to 6)</span></legend>
+  <div class="flex flex-wrap gap-2" data-field-group>
+    {
+      vendorFoodTypes.map((t) => (
+        <label class="h-9 px-3.5 rounded-full border border-line bg-fill text-ink-soft text-sm font-semibold flex items-center gap-1.5 cursor-pointer select-none transition-colors has-checked:bg-brand-soft has-checked:border-brand has-checked:text-brand has-focus-visible:ring-2 has-focus-visible:ring-brand">
+          <input type="checkbox" name="cuisine" value={t} checked={chosen.has(t.toLowerCase())} class="sr-only" />
+          {t}
+        </label>
+      ))
+    }
+  </div>
+  <div class="mt-1">
+    <label for={`${idPrefix}-cuisine-other`} class="text-sm text-muted">Something else? <span class="font-medium">(optional)</span></label>
+    <input id={`${idPrefix}-cuisine-other`} name="cuisine_other" class="field-input mt-1" value={other} maxlength="80" placeholder="For example, Abolo, Akple" />
+  </div>
+  <p data-food-limit hidden class="text-sm font-semibold text-warning-ink">You can pick up to 6. Untick one to choose another.</p>
+  <p class="field-hint">Customers use these to find you in search.</p>
+</fieldset>
+
+<script>
+  // Keep it to 6, and say why when someone tries a 7th
+  document.querySelectorAll<HTMLElement>('[data-food-picker]').forEach((box) => {
+    const limit = box.querySelector<HTMLElement>('[data-food-limit]')!;
+    box.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      if (input.name !== 'cuisine') return;
+      const count = box.querySelectorAll('input[name="cuisine"]:checked').length;
+      if (count > 6) {
+        input.checked = false;
+        limit.hidden = false;
+      } else if (count < 6) {
+        limit.hidden = true;
+      }
+    });
+  });
+</script>

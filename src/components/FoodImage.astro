@@ -1,0 +1,24 @@
+---
+// Photo in a frame that shows a line drawing of a dish (with a soft light
+// passing over it) until the picture loads, then fades the photo in.
+// Without a photo, or if it fails to load, the drawing stays.
+
+interface Props {
+  src: string | null;
+  alt: string;
+  class?: string;
+  /** Load straight away (photos at the top of a page) */
+  eager?: boolean;
+}
+const { src, alt, class: className, eager = false } = Astro.props;
+---
+
+{
+  src ? (
+    <span class:list={['img-frame', className]}>
+      <img src={src} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" class="img-load" />
+    </span>
+  ) : (
+    <span class:list={['food-sketch', className]} role={alt ? 'img' : undefined} aria-label={alt || undefined}></span>
+  )
+}

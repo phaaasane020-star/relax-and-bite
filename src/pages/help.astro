@@ -1,0 +1,101 @@
+---
+import PageHero from '../components/PageHero.astro';
+import AppLayout from '../layouts/AppLayout.astro';
+import Icon from '../components/Icon.astro';
+import { SITE } from '../data/site';
+import { prettyPhone } from '../lib/format';
+
+const faqs = [
+  {
+    q: 'What is the delivery code?',
+    a: 'Every order gets a 4-digit code on its order page. When the rider hands you your food, read the code to them. They need it to finish the delivery, so nobody else can claim your order was delivered. Never share it on the phone or by message.',
+  },
+  {
+    q: 'How do I know the rider is genuine?',
+    a: "Your order page shows the rider's name, photo, vehicle and number plate once they're assigned. Check they match before you take your food. Every rider's Ghana Card is checked before they can deliver.",
+  },
+  {
+    q: "Why can't I pay with cash?",
+    a: "Every order is paid in the app, so restaurants and riders are always paid and nobody has to carry change. Pay with Mobile Money: a prompt pops up on your phone and you approve it with your PIN.",
+  },
+  {
+    q: 'Where do you deliver?',
+    a: "We're starting in Breman Asikuma and will open in more towns across Ghana step by step. The delivery fee is shown before you pay.",
+  },
+  {
+    q: 'How do I pay?',
+    a: 'Pay with Mobile Money (MTN, Telecel or AirtelTigo) right in the app, or with a Visa or Mastercard.',
+  },
+  {
+    q: 'Can I cancel my order?',
+    a: 'Yes, until the restaurant accepts it. Open the order and choose Cancel order. If the kitchen has already started, call the restaurant.',
+  },
+  {
+    q: 'When do I get a refund?',
+    a: 'Refunds for cancelled orders paid online go back to the same Mobile Money wallet or card, usually within 1 to 3 working days.',
+  },
+  {
+    q: 'Something is wrong with my food',
+    a: 'Open a support chat, choose the order, and tell us what happened. We will sort it out with the restaurant.',
+  },
+];
+---
+
+<AppLayout title="Help" mobileHeader="none">
+  <div class="container-app pt-[calc(var(--sat)+1rem)] md:pt-10">
+    <div class="max-w-2xl">
+      <PageHero title="Help and support" back="/account" icon="help" heading="We're here to help" text="Chat with us here in the app, and our team will reply.">
+        <a href="/help/chat" class="btn btn-on-brand btn-lg w-full mt-5 no-underline"><Icon name="chat" size={19} /> Chat with support</a>
+      </PageHero>
+    </div>
+
+    <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+      <section aria-labelledby="faq-h">
+        <h2 id="faq-h" class="text-lg font-extrabold mb-3">Common questions</h2>
+        <div class="flex flex-col gap-3">
+          {
+            faqs.map((f) => (
+              <details class="accordion group card rounded-[1.25rem] p-5">
+                <summary class="flex items-center justify-between gap-3 font-bold list-none [&::-webkit-details-marker]:hidden">
+                  {f.q}
+                  <Icon name="chevron-down" size={20} class="text-muted shrink-0 transition-transform group-open:rotate-180" />
+                </summary>
+                <p class="text-[0.9375rem] text-ink-soft leading-relaxed mt-3 max-w-prose">{f.a}</p>
+              </details>
+            ))
+          }
+        </div>
+      </section>
+
+      <aside class="flex flex-col gap-4">
+        <h2 class="text-lg font-extrabold -mb-1">Contact us</h2>
+        <a href={`tel:${SITE.supportPhone}`} class="card p-4 flex items-center gap-3 no-underline text-ink hover:border-line-strong">
+          <span class="size-10 rounded-xl bg-brand-soft text-brand flex items-center justify-center"><Icon name="phone" size={20} /></span>
+          <span class="flex flex-col"><span class="font-bold">Call us</span><span class="text-sm text-muted tabular">{prettyPhone(SITE.supportPhone)}</span></span>
+        </a>
+        <a href="/help/chat" class="card p-4 flex items-center gap-3 no-underline text-ink hover:border-line-strong">
+          <span class="size-10 rounded-xl bg-brand-soft text-brand flex items-center justify-center"><Icon name="chat" size={20} /></span>
+          <span class="flex flex-col flex-1"><span class="font-bold">Chat with support</span><span class="text-sm text-muted">Our assistant takes the details, then our team replies</span></span>
+          <Icon name="chevron-right" size={18} class="text-faint" />
+        </a>
+
+        <section id="vendors" class="card p-5 flex flex-col gap-2 mt-2 scroll-mt-6" aria-labelledby="vendors-h">
+          <h2 id="vendors-h" class="text-base font-extrabold">Sell on Relax&amp;Bite</h2>
+          <p class="text-sm text-ink-soft">Own a restaurant, chop bar or food stand in Breman Asikuma? Reach more customers and get orders straight to your phone.</p>
+          <a href="/partner/register/vendor" class="btn btn-secondary self-start mt-2">Register your business</a>
+        </section>
+
+        <section id="riders" class="card p-5 flex flex-col gap-2 scroll-mt-6" aria-labelledby="riders-h">
+          <h2 id="riders-h" class="text-base font-extrabold">Ride with us</h2>
+          <p class="text-sm text-ink-soft">Have a motorbike and a valid licence? Earn money delivering food around town on your own schedule.</p>
+          <a href="/partner/register/rider" class="btn btn-secondary self-start mt-2">Apply to ride</a>
+        </section>
+      </aside>
+    </div>
+
+    <p class="md:hidden text-sm pt-8 pb-2 flex gap-4">
+      <a href="/privacy" class="text-ink-soft font-semibold">Privacy Policy</a>
+      <a href="/terms" class="text-ink-soft font-semibold">Terms and Conditions</a>
+    </p>
+  </div>
+</AppLayout>

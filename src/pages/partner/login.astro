@@ -1,0 +1,115 @@
+---
+import PartnerAuthLayout from '../../layouts/PartnerAuthLayout.astro';
+import Icon from '../../components/Icon.astro';
+import { accountLabel, createSession, findAccountByPhone, getSessionAccount, homeFor, signIn } from '../../data/partners';
+import { audit } from '../../data/store';
+import { clientInfo } from '../../lib/client-info';
+import { DEMO_LOGINS } from '../../data/demo';
+import { getPartnerToken, safeNext, setPartnerToken } from '../../lib/session';
+import { SITE } from '../../data/site';
+import { prettyPhone } from '../../lib/format';
+
+const next = Astro.url.searchParams.get('next');
+const existing = await getSessionAccount(getPartnerToken(Astro.cookies));
+if (existing) return Astro.redirect(homeFor(existing));
+
+let error = '';
+let phone = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  phone = String(form.get('phone') ?? '');
+  try {
+    const account = await signIn(phone, String(form.get('password') ?? ''));
+    setPartnerToken(Astro.cookies, await createSession(account.id, clientInfo(Astro)));
+    await audit(accountLabel(account), 'Signed in', { kind: 'signin', severity: account.role === 'admin' ? 'warning' : 'info', ...clientInfo(Astro) });
+    const home = homeFor(account);
+    const target = account.status === 'approved' && next && next.startsWith(home) ? safeNext(next, home) : home;
+    return Astro.redirect(target, 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Could not sign in. Try again.';
+    // Record every failed attempt, and say whose account it was
+    const target = await findAccountByPhone(phone);
+    const locked = !!target && target.locked_until > Date.now();
+    await audit(
+      target ? accountLabel(target) : `Unknown number ${phone.trim().slice(0, 20) || '(empty)'}`,
+      locked ? 'Account locked for 15 minutes after too many wrong passwords' : target ? 'Wrong password' : 'Tried to sign in with a number that has no account',
+      {
+        kind: locked ? 'lockout' : 'signin_failed',
+        severity: locked || target?.role === 'admin' ? 'danger' : 'warning',
+        ...clientInfo(Astro),
+      },
+    );
+  }
+}
+---
+
+<PartnerAuthLayout title="Partner sign in" back="/partner">
+  <div class="container-app pt-10 md:pt-16">
+    <div class="grid gap-10 lg:grid-cols-[minmax(0,440px)_1fr] lg:gap-16 items-start">
+      <div>
+        <h1 class="text-3xl font-extrabold tracking-tight">Sign in</h1>
+        <p class="text-muted mt-2">For vendors and riders.</p>
+
+        <form method="post" class="mt-8 flex flex-col gap-4" novalidate>
+          {
+            error && (
+              <div role="alert" data-form-error class="flex gap-3 items-start p-4 rounded-xl bg-danger-soft text-danger">
+                <Icon name="alert" size={20} class="shrink-0 mt-0.5" />
+                <p class="text-sm font-semibold">{error}</p>
+              </div>
+            )
+          }
+          <div>
+            <label for="phone" class="field-label">Phone number</label>
+            <div class="flex gap-2" data-phone-wrap>
+              <span class="field-input w-auto flex items-center text-muted font-semibold shrink-0" aria-hidden="true">+233</span>
+              <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required value={phone} placeholder="024 123 4567" class="field-input" />
+            </div>
+          </div>
+          <div>
+            <div class="flex items-baseline justify-between">
+              <label for="password" class="field-label">Password</label>
+              <a
+                href={`https://wa.me/${SITE.supportWhatsApp}?text=${encodeURIComponent('Hello, I forgot my Relax&Bite partner password.')}`}
+                target="_blank"
+                rel="noopener"
+                class="text-sm font-semibold text-brand"
+                >Forgot password?</a
+              >
+            </div>
+            <input id="password" name="password" type="password" autocomplete="current-password" required class="field-input" />
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg w-full">Sign in</button>
+        </form>
+
+        <div class="mt-8 pt-6 border-t border-line">
+          <p class="font-extrabold">New here? Sign up</p>
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <a href="/partner/register/vendor" class="btn btn-secondary btn-lg px-3"><Icon name="store" size={20} class="text-brand" /> Restaurant</a>
+            <a href="/partner/register/rider" class="btn btn-secondary btn-lg px-3"><Icon name="bike" size={20} class="text-brand" /> Rider</a>
+          </div>
+        </div>
+      </div>
+
+      {
+        import.meta.env.DEV && (
+          <aside class="card p-5 lg:mt-20 max-w-md">
+            <h2 class="font-extrabold">Test accounts</h2>
+            <p class="text-sm text-muted mt-1">Shown only while developing, after loading the demo data (supabase/04_demo_data.sql). Admin: your own account.</p>
+            <ul class="mt-4 flex flex-col gap-3 text-sm">
+              {DEMO_LOGINS.map((d) => (
+                <li class="flex flex-col">
+                  <span class="font-bold">{d.role}</span>
+                  <span class="text-muted tabular">
+                    {prettyPhone(d.phone)} / {d.password}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        )
+      }
+    </div>
+  </div>
+</PartnerAuthLayout>

@@ -1,0 +1,193 @@
+---
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import BarChart from '../../components/panel/BarChart.astro';
+import StatTile from '../../components/panel/StatTile.astro';
+import RangePicker from '../../components/panel/RangePicker.astro';
+import Icon from '../../components/Icon.astro';
+import { RANGES, parseRange, vendorInsights } from '../../data/insights';
+import { SITE } from '../../data/site';
+import { money } from '../../lib/format';
+
+const account = Astro.locals.partner!;
+const range = parseRange(Astro.url.searchParams.get('range'));
+const s = await vendorInsights(account.vendor_id!, range);
+const pct = Math.round(SITE.commissionRate * 100);
+const rangeLabel = RANGES.find((r) => r.key === range)!.label;
+const freeNow = s.freeUntil !== null && s.freeUntil.getTime() > Date.now();
+const freeEnds = s.freeUntil?.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+// What the fee line says under its label
+const feeNote = freeNow ? 'Free in your first month' : `${pct}% when you withdraw`;
+
+// Visit funnel: visitors -> added to cart -> ordered
+const funnel = [
+  { label: 'Visited your store', value: s.visitors },
+  { label: 'Added food to cart', value: s.addToCart },
+  { label: 'Placed an order', value: s.orders },
+];
+const funnelTop = Math.max(1, ...funnel.map((f) => f.value));
+const topDishes = s.dishes.filter((d) => d.qty > 0 || d.views > 0).slice(0, 8);
+const viewedNotOrdered = s.dishes.filter((d) => d.views >= 10 && d.qty === 0).slice(0, 3);
+---
+
+<PanelLayout title="Sales and visits">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Sales and visits</h1>
+      <p class="text-sm text-muted mt-1">How your store is doing. Cancelled orders aren't counted in sales.</p>
+    </div>
+    <RangePicker current={range} />
+  </div>
+
+  <dl class="mt-6 grid gap-3 grid-cols-2 xl:grid-cols-4">
+    <StatTile label="Your earnings" value={money(s.payout)} change={s.payoutChange} compare={s.compareLabel} hint={`From ${money(s.sales)} food sales`} />
+    <StatTile label="Orders" value={String(s.orders)} change={s.ordersChange} compare={s.compareLabel} />
+    <StatTile label="Store visitors" value={String(s.visitors)} change={s.visitorsChange} compare={s.compareLabel} hint={`${s.views} page views`} />
+    <StatTile
+      label="Visitors who ordered"
+      value={s.conversion === null ? '—' : `${s.conversion}%`}
+      hint={s.conversion === null ? 'No visits yet' : 'Higher is better'}
+    />
+  </dl>
+
+  <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] items-start">
+    <section class="card p-5 flex flex-col gap-4" aria-labelledby="sales-h">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="sales-h" class="font-extrabold">{range === 'today' ? 'Sales by hour today' : 'Sales by day'}</h2>
+        <span class="text-sm text-muted">Average order {money(s.averageOrder)}</span>
+      </div>
+      <BarChart title={range === 'today' ? 'Food sales by hour today' : 'Food sales by day'} bars={s.salesChart} valueLabel="Food sales" />
+    </section>
+
+    <div class="flex flex-col gap-6">
+      <section class="card overflow-hidden" aria-labelledby="money-h">
+        <div class="px-5 pt-5 pb-4 flex items-baseline justify-between gap-3">
+          <h2 id="money-h" class="font-extrabold">Earnings</h2>
+          <span class="text-sm text-muted">{rangeLabel}</span>
+        </div>
+        {
+          freeNow && (
+            <p class="mx-5 mb-4 flex items-start gap-2.5 rounded-lg bg-success-soft text-success px-3.5 py-3 text-sm">
+              <Icon name="tag" size={18} class="shrink-0 mt-px" />
+              <span><strong>Free first month.</strong> No fee on withdrawals until {freeEnds}. After that, {pct}% comes off when you withdraw.</span>
+            </p>
+          )
+        }
+        <dl class="px-5 flex flex-col">
+          <div class="flex items-start justify-between gap-4 py-3 border-t border-line">
+            <dt>
+              <span class="block font-semibold">Food sales</span>
+              <span class="block text-[0.8125rem] text-muted">{s.orders} {s.orders === 1 ? 'order' : 'orders'}</span>
+            </dt>
+            <dd class="tabular font-semibold">{money(s.sales)}</dd>
+          </div>
+          <div class="flex items-start justify-between gap-4 py-3 border-t border-line">
+            <dt>
+              <span class="block font-semibold">Relax&amp;Bite fee</span>
+              <span class="block text-[0.8125rem] text-muted">{feeNote}</span>
+            </dt>
+            <dd class="tabular font-semibold text-muted">{s.fee > 0 ? `− ${money(s.fee)}` : money(0)}</dd>
+          </div>
+        </dl>
+        <div class="mt-1 px-5 py-4 bg-fill border-t border-line flex items-baseline justify-between gap-4">
+          <span class="font-extrabold">Net earnings</span>
+          <span class="tabular text-2xl font-extrabold tracking-tight">{money(s.payout)}</span>
+        </div>
+        <p class="px-5 py-3 border-t border-line text-[0.8125rem] text-muted">Delivered orders go into your <a href="/vendor/wallet" class="font-bold text-brand">wallet</a>. Delivery fees go to riders.</p>
+      </section>
+
+      <section class="card p-5" aria-labelledby="service-h">
+        <h2 id="service-h" class="font-extrabold">Service</h2>
+        <dl class="mt-4 grid grid-cols-3 divide-x divide-line text-center">
+          <div class="px-2 flex flex-col-reverse gap-1">
+            <dt class="text-[0.8125rem] text-muted">Cancelled</dt>
+            <dd class="text-xl font-extrabold tabular">{s.cancelled}</dd>
+          </div>
+          <div class="px-2 flex flex-col-reverse gap-1">
+            <dt class="text-[0.8125rem] text-muted">Avg. prep</dt>
+            <dd class="text-xl font-extrabold tabular">{s.avgPrep === null ? '—' : `${Math.round(s.avgPrep)} min`}</dd>
+          </div>
+          <div class="px-2 flex flex-col-reverse gap-1">
+            <dt class="text-[0.8125rem] text-muted">Rating{s.ratingCount ? ` (${s.ratingCount})` : ''}</dt>
+            <dd class="text-xl font-extrabold tabular flex items-center justify-center gap-1">
+              {s.ratingCount ? <><Icon name="star" size={17} class="text-star" />{s.rating.toFixed(1)}</> : '—'}
+            </dd>
+          </div>
+        </dl>
+      </section>
+    </div>
+  </div>
+
+  <div class="mt-6 grid gap-6 xl:grid-cols-2 items-start">
+    <section class="card p-5 flex flex-col gap-4" aria-labelledby="funnel-h">
+      <div>
+        <h2 id="funnel-h" class="font-extrabold">From visit to order</h2>
+        <p class="text-sm text-muted">People who opened your store page, added food, and paid.</p>
+      </div>
+      <ul class="flex flex-col gap-3">
+        {
+          funnel.map((f) => (
+            <li class="flex flex-col gap-1.5">
+              <div class="flex justify-between text-sm">
+                <span class="font-semibold">{f.label}</span>
+                <span class="font-bold tabular">{f.value}</span>
+              </div>
+              <div class="h-3 rounded-full bg-fill overflow-hidden" aria-hidden="true">
+                <div class="h-full rounded-full bg-brand" style={`width:${Math.max((f.value / funnelTop) * 100, f.value ? 2 : 0)}%`}></div>
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+      {
+        viewedNotOrdered.length > 0 && (
+          <p class="text-sm p-3 rounded-lg bg-warning-soft text-warning-ink">
+            <strong>Looked at but not ordered:</strong> {viewedNotOrdered.map((d) => d.name).join(', ')}. A better photo, clearer description or price check could help.
+          </p>
+        )
+      }
+    </section>
+
+    <section class="card p-5 flex flex-col gap-4" aria-labelledby="hours-h">
+      <div>
+        <h2 id="hours-h" class="font-extrabold">Busiest hours</h2>
+        <p class="text-sm text-muted">When orders come in. Make sure you're open and stocked then.</p>
+      </div>
+      <BarChart title="Orders by hour of day" bars={s.hours} format="count" valueLabel="Orders" height={160} />
+    </section>
+  </div>
+
+  <section class="card mt-6 overflow-hidden" aria-labelledby="dishes-h">
+    <div class="px-5 py-4 border-b border-line">
+      <h2 id="dishes-h" class="font-extrabold">Dishes</h2>
+      <p class="text-sm text-muted">Best sellers first. Views count how often customers opened the dish.</p>
+    </div>
+    {
+      topDishes.length === 0 ? (
+        <p class="p-5 text-sm text-muted">No sales or views in this period yet.</p>
+      ) : (
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-paper text-left text-muted">
+              <tr>
+                <th class="px-5 py-3 font-semibold">Dish</th>
+                <th class="px-5 py-3 font-semibold text-right">Views</th>
+                <th class="px-5 py-3 font-semibold text-right">Sold</th>
+                <th class="px-5 py-3 font-semibold text-right">Sales</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-line">
+              {topDishes.map((d) => (
+                <tr>
+                  <td class="px-5 py-3 font-semibold">{d.name}</td>
+                  <td class="px-5 py-3 text-right tabular">{d.views}</td>
+                  <td class="px-5 py-3 text-right tabular">{d.qty}</td>
+                  <td class="px-5 py-3 text-right tabular font-bold">{money(d.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    }
+  </section>
+</PanelLayout>

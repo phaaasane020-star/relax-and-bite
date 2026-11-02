@@ -1,0 +1,198 @@
+---
+// Second launch screen: ask to use the person's location, then pick a town.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Icon from '../../components/Icon.astro';
+import Copyright from '../../components/Copyright.astro';
+import BackButton from '../../components/BackButton.astro';
+import TownChoice from '../../components/TownChoice.astro';
+import { getZones } from '../../data/store';
+import { getLocation } from '../../lib/session';
+
+const zones = await getZones();
+const saved = getLocation(Astro.cookies);
+const towns = zones.map((z) => z.name).join(', ').replace(/, ([^,]*)$/, ' and $1');
+const areas = JSON.stringify(zones.map((z) => ({ id: z.id, name: z.name, lat: z.lat, lng: z.lng, radius_km: z.radius_km }))).replace(/</g, '\\u003c');
+---
+
+<BaseLayout title="Your location" bare>
+  <div data-motion="page" class="min-h-dvh flex flex-col w-full max-w-md mx-auto px-5 pt-[max(1rem,var(--sat))] pb-[max(1.5rem,var(--sab))]">
+    <div class="flex items-center justify-between">
+      <BackButton href="/welcome" />
+      <a href="/" data-finish class="h-10 px-4 rounded-full bg-surface border border-line text-ink font-bold text-sm flex items-center no-underline">
+        Not now
+      </a>
+    </div>
+
+    <!-- Ask -->
+    <section data-ask class="flex-1 flex flex-col">
+      <div class="flex-1 flex flex-col items-center justify-center text-center gap-6 py-8">
+        <div class="relative size-40 flex items-center justify-center" aria-hidden="true">
+          <span class="absolute inset-0 rounded-full bg-brand-tint"></span>
+          <span class="breathe absolute inset-6 rounded-full bg-brand-soft"></span>
+          <span class="relative size-16 rounded-full bg-brand text-on-brand flex items-center justify-center">
+            <Icon name="pin" size={32} />
+          </span>
+        </div>
+        <div class="flex flex-col gap-3">
+          <h1 class="text-[1.75rem] leading-tight font-extrabold tracking-tight">Allow us to use your location</h1>
+          <p class="text-muted leading-relaxed">
+            We use it to check that we deliver to you, show the restaurants near you and help your rider find you.
+            We only use it while you're using the app.
+          </p>
+        </div>
+      </div>
+
+      <div data-ask-msg role="status" aria-live="polite" hidden class="flex gap-2.5 items-start p-3 rounded-lg text-sm mb-4"></div>
+
+      <div class="flex flex-col gap-3">
+        <button type="button" data-allow class="btn btn-primary btn-lg w-full">
+          <Icon name="pin" size={20} /> <span data-allow-label>Allow location</span>
+        </button>
+        <button type="button" data-manual class="btn btn-secondary btn-lg w-full">Choose my area instead</button>
+        <p class="text-[0.8125rem] text-muted text-center leading-relaxed pt-1">
+          You can change this any time. Read our <a href="/privacy?from=location" class="font-semibold text-ink underline underline-offset-2">Privacy Policy</a>.
+        </p>
+        <Copyright class="text-xs pt-2" show="always" />
+      </div>
+    </section>
+
+    <!-- Pick a town -->
+    <form data-pick hidden class="flex-1 flex flex-col gap-5 pt-4" novalidate>
+      <div>
+        <h1 class="text-[1.75rem] leading-tight font-extrabold tracking-tight" data-pick-title>Where should we deliver?</h1>
+        <p class="text-muted mt-2" data-pick-text>We deliver in {towns}. More towns are coming soon.</p>
+      </div>
+
+      <div data-pick-msg role="status" aria-live="polite" hidden class="flex gap-2.5 items-start p-3 rounded-lg text-sm"></div>
+
+      <TownChoice zones={zones} zoneId={saved?.zoneId} />
+
+      <div>
+        <label for="welcome-landmark" class="field-label">Landmark <span class="text-muted font-medium">(optional)</span></label>
+        <input id="welcome-landmark" name="landmark" class="field-input" value={saved?.landmark ?? ''} placeholder="For example, near the Methodist church" maxlength="120" />
+      </div>
+
+      <p data-error role="alert" hidden class="text-sm font-semibold text-danger"></p>
+
+      <div class="mt-auto flex flex-col gap-3 pt-4">
+        <button type="submit" class="btn btn-primary btn-lg w-full">Continue</button>
+        <a href="/" data-finish class="btn btn-ghost w-full">Browse without an area</a>
+      </div>
+    </form>
+
+    <script type="application/json" data-areas set:html={areas}></script>
+  </div>
+</BaseLayout>
+
+<script>
+  import { locate, type TownArea } from '../../lib/geo';
+  import { markOnboarded } from '../../lib/onboarding';
+  import { townIn } from '../../lib/ghana-towns';
+  import { confirmAction } from '../../lib/confirm';
+
+  const areas = JSON.parse(document.querySelector('[data-areas]')!.textContent || '[]') as TownArea[];
+  const towns = areas.map((a) => a.name).join(', ').replace(/, ([^,]*)$/, ' and $1');
+  const ask = document.querySelector<HTMLElement>('[data-ask]')!;
+  const pick = document.querySelector<HTMLFormElement>('form[data-pick]')!;
+  const allow = document.querySelector<HTMLButtonElement>('[data-allow]')!;
+  const allowLabel = allow.querySelector<HTMLElement>('[data-allow-label]')!;
+
+  const ICONS = {
+    ok: '<path d="m5 12 5 5 9-10"/>',
+    warn: '<path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
+  };
+  const say = (el: HTMLElement, tone: 'ok' | 'warn' | 'info', text: string) => {
+    const tones = { ok: 'bg-success-soft text-success', warn: 'bg-warning-soft text-warning-ink', info: 'bg-fill text-ink-soft' };
+    el.className = `flex gap-2.5 items-start p-3 rounded-lg text-sm ${tones[tone]}`;
+    el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0 mt-0.5">${ICONS[tone]}</svg><span></span>`;
+    el.querySelector('span')!.textContent = text;
+    el.hidden = false;
+  };
+
+  // A place we don't deliver to: say so in a prompt
+  const notHere = (place: string, extra = '') =>
+    confirmAction({
+      title: `We don't deliver to ${place} yet`,
+      message: `${extra}Relax&Bite delivers in ${towns} for now. Choose one of these towns, or check back soon. We're adding more towns.`,
+      confirmLabel: 'OK',
+      alertOnly: true,
+    });
+
+  const showPicker = (tone?: 'ok' | 'warn' | 'info', text?: string, townId?: number) => {
+    ask.hidden = true;
+    pick.hidden = false;
+    if (townId !== undefined) {
+      const radio = pick.querySelector<HTMLInputElement>(`[name="zone_id"][value="${townId}"]`);
+      if (radio) radio.checked = true;
+    }
+    if (tone && text) say(pick.querySelector<HTMLElement>('[data-pick-msg]')!, tone, text);
+    (pick.querySelector<HTMLInputElement>('[name="zone_id"]:checked') ?? pick.querySelector<HTMLInputElement>('[name="zone_id"]'))?.focus();
+  };
+
+  document.querySelectorAll('[data-finish]').forEach((a) => a.addEventListener('click', () => markOnboarded()));
+  document.querySelector('[data-manual]')!.addEventListener('click', () => showPicker());
+
+  allow.addEventListener('click', async () => {
+    allow.disabled = true;
+    allow.setAttribute('aria-busy', 'true');
+    allowLabel.textContent = 'Finding you…';
+    const result = await locate(areas);
+    allow.removeAttribute('aria-busy');
+    allow.disabled = false;
+    allowLabel.textContent = 'Allow location';
+
+    if (!result.ok) {
+      showPicker('info', result.reason.replace('below', 'here'));
+    } else if (result.inside) {
+      showPicker('ok', `You're in ${result.inside.name}, so we can deliver to you.`, result.inside.id);
+    } else {
+      const km = result.km !== null ? Math.round(result.km) : null;
+      const where = result.nearest && km !== null ? `You're about ${km} km from ${result.nearest.name}. ` : '';
+      await notHere('where you are', `${where}You can still browse, or order for someone in one of our towns. `);
+      showPicker();
+    }
+  });
+
+  pick.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const error = pick.querySelector<HTMLElement>('[data-error]')!;
+    const typed = (pick.elements.namedItem('landmark') as HTMLInputElement).value;
+    const named = townIn(typed, areas.map((a) => a.name));
+    if (named && !areas.some((a) => a.name.toLowerCase() === named.toLowerCase())) {
+      await notHere(named);
+      return;
+    }
+    const zone = pick.querySelector<HTMLInputElement>('[name="zone_id"]:checked');
+    if (!zone) {
+      error.textContent = 'Choose your town.';
+      error.hidden = false;
+      pick.querySelector<HTMLInputElement>('[name="zone_id"]')?.focus();
+      return;
+    }
+    const btn = pick.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    btn.textContent = 'Saving…';
+    const res = await fetch('/api/location', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        zoneId: Number(zone.value),
+        localityId: null,
+        landmark: (pick.elements.namedItem('landmark') as HTMLInputElement).value,
+      }),
+    });
+    if (res.ok) {
+      markOnboarded();
+      window.location.replace('/');
+    } else {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      error.textContent = data.error || 'Could not save. Try again.';
+      error.hidden = false;
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      btn.textContent = 'Continue';
+    }
+  });
+</script>

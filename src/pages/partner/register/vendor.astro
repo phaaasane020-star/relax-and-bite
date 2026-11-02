@@ -1,0 +1,134 @@
+---
+import { notifyNewApplication } from '../../../data/notify';
+import { clientInfo } from '../../../lib/client-info';
+import { audit } from '../../../data/store';
+import PartnerAuthLayout from '../../../layouts/PartnerAuthLayout.astro';
+import Icon from '../../../components/Icon.astro';
+import { businessTypes } from '../../../data/catalog';
+import { getAllZones } from '../../../data/store';
+import { createSession, getSessionAccount, homeFor, registerVendor, setAccountStatus, tempPassword } from '../../../data/partners';
+import PartnerCreated from '../../../components/panel/PartnerCreated.astro';
+import { prettyPhone } from '../../../lib/format';
+import { getPartnerToken, setPartnerToken } from '../../../lib/session';
+
+const existing = await getSessionAccount(getPartnerToken(Astro.cookies));
+// An admin can open this page with ?add=1 to add a partner in person (approved straight away)
+const adminAdding = existing?.role === 'admin' && existing.status === 'approved' && Astro.url.searchParams.get('add') === '1';
+if (existing && !adminAdding) return Astro.redirect(homeFor(existing));
+let created: { name: string; phone: string; password: string } | null = null;
+
+const zones = (await getAllZones()).filter((z) => z.is_active);
+let error = '';
+let v: Record<string, string> = {}; // nothing chosen until they pick
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  v = Object.fromEntries([...form.entries()].map(([k, val]) => [k, String(val).slice(0, 300)]));
+  try {
+    if (!v.zone_id) throw new Error('Choose your town.');
+    const password = adminAdding ? tempPassword() : v.password ?? '';
+    const account = await registerVendor({
+      business_name: v.business_name ?? '',
+      description: '',
+      cuisine_tags: '',
+      address: '',
+      zone_id: Number(v.zone_id),
+      locality_id: null,
+      business_type: v.business_type ?? '',
+      full_name: v.full_name ?? '',
+      phone: v.phone ?? '',
+      email: v.email ?? '',
+      password,
+    });
+    if (adminAdding) {
+      await setAccountStatus(account.id, 'approved');
+      await audit(`${existing!.full_name} (admin)`, `Added the vendor ${v.business_name ?? ''} (${account.full_name}, ${prettyPhone(account.phone)}) and approved it`, { kind: 'admin', ...clientInfo(Astro) });
+      created = { name: account.full_name, phone: account.phone, password };
+    } else {
+      setPartnerToken(Astro.cookies, await createSession(account.id, clientInfo(Astro)));
+      await notifyNewApplication('vendor', v.business_name ?? account.full_name);
+      await audit(`${account.full_name} (vendor)`, `Applied to sell as ${v.business_name ?? ''}`, { kind: 'register', severity: 'warning', ...clientInfo(Astro) });
+      return Astro.redirect('/partner/pending?new=1', 303);
+    }
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Could not register. Try again.';
+  }
+}
+---
+
+<PartnerAuthLayout title={adminAdding ? 'Add a vendor' : 'Add your business'} back={adminAdding ? '/admin/vendors' : '/partner'}>
+  <div class="container-app pt-8 md:pt-12">
+    <div class="max-w-lg mx-auto">
+      <p class="text-sm font-bold text-brand">{adminAdding ? 'Admin' : 'Partner sign-up'}</p>
+      <h1 class="text-3xl font-extrabold tracking-tight mt-1">{adminAdding ? 'Add a vendor' : 'Add your business'}</h1>
+      {adminAdding && <p class="text-muted mt-2">The vendor is approved straight away, and you'll get a temporary password to send them.</p>}
+
+      {created && (
+        <div class="mt-8">
+          <PartnerCreated role="vendor" name={created.name} phone={created.phone} password={created.password} doneHref="/admin/vendors" againHref="/partner/register/vendor?add=1" />
+        </div>
+      )}
+      {!created && (
+      <form method="post" class="mt-7 flex flex-col gap-5" novalidate>
+        {
+          error && (
+            <div role="alert" data-form-error class="flex gap-3 items-start p-4 rounded-xl bg-danger-soft text-danger">
+              <Icon name="alert" size={20} class="shrink-0 mt-0.5" />
+              <p class="text-sm font-semibold">{error}</p>
+            </div>
+          )
+        }
+        <div>
+          <label for="business_name" class="field-label">Business name</label>
+          <input id="business_name" name="business_name" class="field-input field-lg" required minlength="2" maxlength="80" value={v.business_name} />
+        </div>
+        <div>
+          <label for="full_name" class="field-label">Owner's name</label>
+          <input id="full_name" name="full_name" class="field-input field-lg" required minlength="3" maxlength="80" autocomplete="name" value={v.full_name} />
+        </div>
+        <div>
+          <label for="zone_id" class="field-label">Town</label>
+          <select id="zone_id" name="zone_id" class="field-input field-lg" required data-required-message="Choose your town.">
+            <option value="" disabled selected={!v.zone_id}>Choose your town</option>
+            {zones.map((z) => <option value={z.id} selected={v.zone_id === String(z.id)}>{z.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label for="phone" class="field-label">Phone number</label>
+          <input id="phone" name="phone" type="tel" inputmode="tel" class="field-input field-lg" required autocomplete="tel" value={v.phone} placeholder="024 123 4567" />
+          <p class="field-hint">{adminAdding ? 'They sign in with this number.' : 'You sign in with this number.'}</p>
+        </div>
+        <div>
+          <label for="email" class="field-label">Email <span class="text-muted font-medium">(optional)</span></label>
+          <input id="email" name="email" type="email" inputmode="email" class="field-input field-lg" autocomplete="email" autocapitalize="off" spellcheck="false" value={v.email} />
+          <p class="field-hint">For new order alerts.</p>
+        </div>
+        <div>
+          <label for="business_type" class="field-label">Business type</label>
+          <select id="business_type" name="business_type" class="field-input field-lg" required data-required-message="Choose your business type.">
+            <option value="" disabled selected={!v.business_type}>Choose</option>
+            {businessTypes.map((t) => <option value={t} selected={v.business_type === t}>{t}</option>)}
+          </select>
+        </div>
+        {!adminAdding && (
+          <div>
+            <label for="password" class="field-label">Create a password</label>
+            <input id="password" name="password" type="password" class="field-input field-lg" required minlength="8" autocomplete="new-password" />
+            <p class="field-hint">At least 8 characters.</p>
+          </div>
+        )}
+
+        <button type="submit" class="btn btn-primary btn-lg w-full mt-2">{adminAdding ? 'Add and approve vendor' : 'Submit application'}</button>
+        {!adminAdding && (
+          <>
+            <p class="text-[0.8125rem] text-muted text-center -mt-1">
+              By submitting, you agree to the <a href="/terms#partners" target="_blank" class="font-semibold text-ink underline underline-offset-2">Terms</a> and <a href="/privacy" target="_blank" class="font-semibold text-ink underline underline-offset-2">Privacy Policy</a>.
+            </p>
+            <p class="text-sm text-muted text-center">Already a partner? <a href="/partner/login" class="font-bold text-brand">Sign in</a></p>
+          </>
+        )}
+      </form>
+      )}
+    </div>
+  </div>
+</PartnerAuthLayout>

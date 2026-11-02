@@ -1,0 +1,41 @@
+---
+import Logo from './Logo.astro';
+import { SITE } from '../data/site';
+import Copyright from './Copyright.astro';
+interface Props {
+  /** Leave room for the phone bottom navigation */
+  nav?: boolean;
+}
+const { nav = true } = Astro.props;
+---
+
+<footer class:list={['site-footer border-t border-line bg-surface mt-8 md:mt-16', nav && 'pb-20 md:pb-0']}>
+  <div class="hidden container-app py-10 md:flex flex-wrap items-start justify-between gap-8">
+    <div class="flex flex-col gap-3 max-w-xs">
+      <Logo size="sm" />
+      <p class="text-sm text-muted">Food from your favourite local spots, delivered across {SITE.area}.</p>
+    </div>
+    <nav aria-label="Footer" class="flex gap-12 text-sm">
+      <div class="flex flex-col gap-2">
+        <span class="font-bold">Customers</span>
+        <a href="/orders" class="text-muted no-underline hover:text-ink">My orders</a>
+        <a href="/orders?tab=favourites" class="text-muted no-underline hover:text-ink">Favourites</a>
+        <a href="/help" class="text-muted no-underline hover:text-ink">Help and support</a>
+      </div>
+      <div class="flex flex-col gap-2">
+        <span class="font-bold">Partners</span>
+        <a href="/partner/register/vendor" class="text-muted no-underline hover:text-ink">Sell on Relax&amp;Bite</a>
+        <a href="/partner/register/rider" class="text-muted no-underline hover:text-ink">Ride with us</a>
+        <a href="/partner/login" class="text-muted no-underline hover:text-ink">Partner sign in</a>
+      </div>
+      <div class="flex flex-col gap-2">
+        <span class="font-bold">Legal</span>
+        <a href="/privacy" class="text-muted no-underline hover:text-ink">Privacy Policy</a>
+        <a href="/terms" class="text-muted no-underline hover:text-ink">Terms and Conditions</a>
+      </div>
+    </nav>
+  </div>
+  <div class="md:border-t border-line">
+    <Copyright row class="container-app py-5" />
+  </div>
+</footer>

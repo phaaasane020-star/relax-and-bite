@@ -1,0 +1,22 @@
+---
+// The outline shown while a page loads. The current page's outline is drawn
+// straight away (so a refresh shows it before anything else); the others are
+// kept as templates, so tapping a link shows the outline of where you're going.
+import SkeletonShape from './SkeletonShape.astro';
+import { SKELETON_KINDS, type SkeletonKind } from '../lib/skeleton';
+interface Props {
+  kind: SkeletonKind;
+}
+const { kind } = Astro.props;
+---
+
+<div id="ptr-skeleton" data-kind={kind} aria-hidden="true">
+  <SkeletonShape kind={kind} />
+</div>
+{
+  SKELETON_KINDS.filter((k) => k !== kind).map((k) => (
+    <template data-skeleton={k}>
+      <SkeletonShape kind={k} />
+    </template>
+  ))
+}

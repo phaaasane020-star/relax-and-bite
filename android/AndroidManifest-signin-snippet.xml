@@ -1,0 +1,14 @@
+<!--
+  Google sign-in in the app: lets the phone's browser hand the sign-in back
+  to the app. Open android/app/src/main/AndroidManifest.xml and paste the
+  <intent-filter> below INSIDE the existing <activity android:name=".MainActivity" ...>,
+  next to the intent-filter that has android.intent.action.MAIN.
+  Also make sure that <activity> has  android:launchMode="singleTask"
+  (Capacitor adds it already; if it's missing, add it).
+-->
+<intent-filter>
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="relaxbite" android:host="signin" />
+</intent-filter>

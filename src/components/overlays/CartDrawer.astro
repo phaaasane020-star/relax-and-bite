@@ -1,0 +1,86 @@
+---
+// Cart panel that slides over the page from the right.
+import Icon from '../Icon.astro';
+
+---
+
+<dialog id="cart-drawer" class="drawer" aria-labelledby="cart-drawer-title">
+  <div class="h-full flex flex-col">
+    <header class="flex items-center justify-between gap-3 px-5 h-16 border-b border-line shrink-0">
+      <h2 id="cart-drawer-title" class="text-lg font-extrabold">Your cart</h2>
+      <button type="button" data-close class="icon-btn icon-btn-round border-0 -mr-2" aria-label="Close cart">
+        <Icon name="x" size={22} />
+      </button>
+    </header>
+
+    <!-- Empty -->
+    <div data-drawer-empty class="flex-1 flex flex-col items-center justify-center text-center px-8 gap-2">
+      <Icon name="bag" size={40} strokeWidth={1.6} class="text-faint" />
+      <p class="text-lg font-extrabold mt-2">Your cart is empty</p>
+      <p class="text-muted">Find something you like and add it here.</p>
+      <a href="/" data-close class="btn btn-primary mt-4">Browse restaurants</a>
+    </div>
+
+    <!-- Filled -->
+    <div data-drawer-filled hidden class="flex-1 min-h-0 flex flex-col">
+      <div class="px-5 pt-4 flex items-center justify-between gap-3">
+        <a data-drawer-vendor href="/" class="font-bold text-ink no-underline hover:underline truncate"></a>
+        <button type="button" data-drawer-clear class="btn btn-ghost text-danger text-sm min-h-9 -mr-2">Clear cart</button>
+      </div>
+      <ul data-drawer-lines class="flex-1 overflow-y-auto px-5 divide-y divide-line"></ul>
+
+      <footer class="shrink-0 border-t border-line px-5 pt-4 pb-[max(1.25rem,var(--sab))] flex flex-col gap-3">
+        <div class="flex flex-col gap-1.5 text-[0.9375rem]">
+          <div class="flex justify-between"><span class="text-muted">Subtotal</span><span data-drawer-subtotal class="tabular"></span></div>
+          <div class="flex justify-between">
+            <span class="text-muted">Delivery</span>
+            <span class="tabular" data-drawer-fee>Set at checkout</span>
+          </div>
+        </div>
+        <a href="/checkout" class="btn btn-primary btn-lg w-full justify-between px-4">
+          <span>Go to checkout</span>
+          <span data-drawer-total class="tabular"></span>
+        </a>
+      </footer>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  import { cartSubtotal, clearCart, onCartChange } from '../../lib/cart';
+  import { renderCartLines } from '../../lib/cart-ui';
+  import { confirmAction } from '../../lib/confirm';
+  import { money } from '../../lib/format';
+
+  const drawer = document.getElementById('cart-drawer') as HTMLDialogElement;
+  const q = <T extends HTMLElement = HTMLElement>(sel: string) => drawer.querySelector<T>(sel)!;
+  const feeEl = q('[data-drawer-fee]');
+
+  onCartChange((cart) => {
+    q('[data-drawer-empty]').hidden = !!cart;
+    q('[data-drawer-filled]').hidden = !cart;
+    if (!cart) return;
+    const vendor = q<HTMLAnchorElement>('[data-drawer-vendor]');
+    vendor.textContent = cart.vendorName;
+    vendor.href = `/vendors/${cart.vendorSlug}`;
+    renderCartLines(q('[data-drawer-lines]'), cart);
+    const subtotal = cartSubtotal(cart);
+    // The restaurant's own delivery fee (checkout confirms it)
+    const fee = cart.deliveryFee ?? null;
+    q('[data-drawer-subtotal]').textContent = money(subtotal);
+    feeEl.textContent = fee !== null ? money(fee) : 'Set at checkout';
+    q('[data-drawer-total]').textContent = money(subtotal + (fee ?? 0));
+  });
+
+  q('[data-drawer-clear]').addEventListener('click', async () => {
+    drawer.close();
+    const yes = await confirmAction({
+      title: 'Clear your cart?',
+      message: 'All items will be removed.',
+      confirmLabel: 'Clear cart',
+      danger: true,
+    });
+    if (yes) clearCart();
+    else drawer.showModal();
+  });
+</script>

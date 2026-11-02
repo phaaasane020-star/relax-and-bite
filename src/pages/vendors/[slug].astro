@@ -1,0 +1,575 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import Icon from '../../components/Icon.astro';
+import FoodImage from '../../components/FoodImage.astro';
+import { getMenu, getVendorBySlug, getZone, vendorStatusLabel } from '../../data/store';
+import { getLocation, getPartnerToken } from '../../lib/session';
+import { recordVisit } from '../../data/insights';
+import { getSessionAccount } from '../../data/partners';
+import { randomUUID } from 'node:crypto';
+import { money } from '../../lib/format';
+
+const { slug } = Astro.params;
+const vendor = slug ? await getVendorBySlug(slug) : undefined;
+if (!vendor) return Astro.rewrite('/404');
+
+// Count the visit (but not the owner checking their own page)
+const partner = await getSessionAccount(getPartnerToken(Astro.cookies));
+if (partner?.vendor_id !== vendor.id) {
+  let visitor = Astro.cookies.get('rb_vid')?.value;
+  if (!visitor) {
+    visitor = randomUUID();
+    Astro.cookies.set('rb_vid', visitor, { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax', httpOnly: true });
+  }
+  await recordVisit(vendor.id, visitor);
+}
+
+const { categories, items } = await getMenu(vendor.id);
+const loc = getLocation(Astro.cookies);
+const zone = loc ? await getZone(loc.zoneId) : undefined;
+// Restaurants deliver in their own town only
+const otherTown = zone && vendor.zone_id !== zone.id ? await getZone(vendor.zone_id) : undefined;
+const status = vendorStatusLabel(vendor);
+
+const popular = items.filter((i) => i.is_popular);
+const sections = [
+  ...(popular.length ? [{ id: 'popular', name: 'Popular', items: popular }] : []),
+  ...categories
+    .map((c) => ({ id: `cat-${c.id}`, name: c.name, items: items.filter((i) => i.category_id === c.id) }))
+    .filter((s) => s.items.length > 0),
+];
+
+// Data for the browser script (escaped so it can't break out of the tag)
+const menuData = JSON.stringify({
+  vendor: { id: vendor.id, slug: vendor.slug, name: vendor.name, is_open: vendor.is_open, delivery_fee: vendor.delivery_fee },
+  items: items.map((i) => ({
+    id: i.id,
+    name: i.name,
+    description: i.description,
+    price: i.price,
+    image_url: i.image_url,
+    options: i.options,
+    is_available: i.is_available,
+  })),
+}).replace(/</g, '\\u003c');
+---
+
+<AppLayout title={vendor.name} description={`${vendor.description}. Order from ${vendor.name} on Relax&Bite.`} mobileHeader="top" nav={false}>
+  <!-- Cover -->
+  <div class="container-app max-md:px-0 md:pt-6">
+    <div class="relative h-50 md:h-70 md:rounded-card overflow-hidden bg-line">
+      <FoodImage src={vendor.cover_url} alt={`Food from ${vendor.name}`} class="size-full" eager />
+      <a href="/" data-back class="md:hidden back-link back-link-pill absolute left-4 top-4" aria-label="Back">
+        <Icon name="chevron-left" size={20} strokeWidth={2.2} />
+      </a>
+    </div>
+  </div>
+
+  <div class="container-app lg:flex lg:gap-10 lg:items-start">
+    <div class="flex-1 min-w-0">
+      <!-- Vendor info -->
+      <section class="pt-5 pb-4 flex flex-col gap-2">
+        <div class="flex items-start justify-between gap-3">
+          <h1 class="text-[1.625rem] md:text-3xl font-extrabold tracking-tight">{vendor.name}</h1>
+          <button type="button" class="fav-btn mt-1" data-fav="vendor" data-fav-id={vendor.id} data-fav-name={vendor.name} aria-pressed="false" aria-label={`Save ${vendor.name} to favourites`}>
+            <Icon name="bookmark" size={20} />
+          </button>
+        </div>
+        <p class="text-[0.9375rem] text-muted">{vendor.description}</p>
+        <div class="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm font-semibold">
+          <span class="flex items-center gap-1">
+            <Icon name="star" size={16} class="text-star" />
+            {vendor.rating.toFixed(1)} <span class="text-muted font-medium">({vendor.rating_count} ratings)</span>
+          </span>
+          <span>{vendor.prep_time_min}–{vendor.prep_time_max} min</span>
+          {!otherTown && <span>{money(vendor.delivery_fee)} delivery</span>}
+          {vendor.min_order > 0 && <span>{money(vendor.min_order)} minimum</span>}
+        </div>
+        <p class:list={['mt-1 text-sm font-semibold', vendor.is_open ? 'text-success' : 'text-ink-soft']}>
+          {status} {vendor.address && <span class="text-muted font-medium">at {vendor.address}</span>}
+        </p>
+      </section>
+
+      {
+        otherTown && zone && (
+          <div class="flex gap-3 items-start p-4 rounded-xl bg-warning-soft text-warning-ink mb-2">
+            <Icon name="pin" size={20} class="shrink-0 mt-0.5" />
+            <p class="text-sm">
+              <strong>{vendor.name} is in {otherTown.name}</strong> and doesn't deliver to {zone.name}.{' '}
+              <a href={`/location?next=${encodeURIComponent(Astro.url.pathname)}`} data-open="location" class="font-bold text-warning-ink underline underline-offset-2">Change town</a>
+            </p>
+          </div>
+        )
+      }
+      {
+        !vendor.is_open && (
+          <div class="flex gap-3 items-start p-4 rounded-xl bg-warning-soft text-warning-ink mb-2">
+            <Icon name="clock" size={20} class="shrink-0 mt-0.5" />
+            <p class="text-sm">
+              <strong>{vendor.name} is closed right now.</strong> You can look at the menu and order once they open at {status.replace('Opens at ', '')}.
+            </p>
+          </div>
+        )
+      }
+
+      <!-- Section tabs -->
+      <nav
+        aria-label="Menu sections"
+        class="edge-row scroll-shadow sticky top-0 z-20 bg-paper/95 backdrop-blur border-b border-line -mx-4 px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0"
+      >
+        <div class="flex gap-6 overflow-x-auto hide-scrollbar" data-tabs>
+          {
+            sections.map((s, i) => (
+              <a
+                href={`#${s.id}`}
+                data-tab={s.id}
+                aria-current={i === 0 ? 'true' : undefined}
+                class="py-3.5 text-[0.9375rem] font-semibold whitespace-nowrap no-underline text-muted border-b-2 border-transparent aria-[current=true]:text-ink aria-[current=true]:font-bold aria-[current=true]:border-brand"
+              >
+                {s.name}
+              </a>
+            ))
+          }
+        </div>
+      </nav>
+
+      <!-- Menu -->
+      <div class="pb-32 lg:pb-12">
+        {
+          sections.map((s) => (
+            <section id={s.id} data-section class="scroll-mt-16 pt-6">
+              <h2 class="section-title text-[1.1875rem] font-extrabold mb-1">{s.name}</h2>
+              <ul>
+                {s.items.map((item) => {
+                  const disabled = !item.is_available;
+                  const closed = !vendor.is_open;
+                  return (
+                    <li id={s.id === 'popular' ? undefined : `item-${item.id}`} class="border-b border-line last:border-0">
+                      <button
+                        type="button"
+                        data-open-item={item.id}
+                        disabled={disabled}
+                        class="w-full text-left flex gap-4 py-4 group disabled:cursor-default"
+                      >
+                        <span class="flex-1 min-w-0 flex flex-col gap-1.5">
+                          <span class:list={['text-base font-bold flex items-center gap-1.5', disabled && 'text-faint']}>
+                            {item.name}
+                            <span data-fav-dot={item.id} hidden class="text-brand" aria-label="In your favourites">
+                              <Icon name="bookmark" size={14} class="[&_path]:fill-current" />
+                            </span>
+                          </span>
+                          {item.description && (
+                            <span class:list={['text-sm leading-5 line-clamp-2', disabled ? 'text-faint' : 'text-muted']}>
+                              {item.description}
+                            </span>
+                          )}
+                          <span class="flex items-center gap-2.5 flex-wrap">
+                            <span class:list={['text-[0.9375rem] font-bold tabular', disabled && 'text-faint']}>{money(item.price)}</span>
+                            {!item.is_available && <span class="badge h-6 rounded-md bg-fill text-ink-soft text-xs">Sold out today</span>}
+                            <span data-qty-for={item.id} hidden class="badge h-6 rounded-md bg-brand-soft text-brand-ink text-xs">
+                              0 in cart
+                            </span>
+                          </span>
+                        </span>
+                        <span class="relative size-26 shrink-0">
+                          <FoodImage src={item.image_url} alt={item.name} class:list={['size-26 rounded-xl', disabled && 'opacity-60']} />
+                          {!disabled && !closed && (
+                            <span class="absolute -right-1.5 -bottom-2 size-9 rounded-full bg-surface border border-line-strong text-brand flex items-center justify-center shadow-sm group-hover:border-brand">
+                              <Icon name="plus" size={18} strokeWidth={2.4} />
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))
+        }
+      </div>
+    </div>
+
+    <!-- Desktop cart -->
+    <aside class="hidden lg:block w-80 shrink-0 sticky top-6 mt-6" aria-labelledby="side-cart-h">
+      <div class="card p-5 flex flex-col gap-4">
+        <h2 id="side-cart-h" class="text-lg font-extrabold">Your order</h2>
+        <p data-side-empty class="text-sm text-muted">Your cart is empty. Choose something from the menu.</p>
+        <p data-side-other hidden class="text-sm text-muted"></p>
+        <ul data-side-lines class="flex flex-col gap-3 text-sm"></ul>
+        <div data-side-total hidden class="flex justify-between font-bold pt-3 border-t border-line">
+          <span>Subtotal</span><span data-side-subtotal class="tabular"></span>
+        </div>
+        <a href="/checkout" data-side-checkout hidden class="btn btn-primary btn-lg w-full">Go to checkout</a>
+        <a href="/cart" data-open="cart" data-side-cart hidden class="btn btn-secondary w-full">Edit cart</a>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Phone cart bar -->
+  <div data-cart-bar hidden class="lg:hidden fixed inset-x-0 bottom-0 z-30 bg-surface border-t border-line px-4 pt-3 pb-[max(1rem,var(--sab))]">
+    <a href="/cart" data-open="cart" class="btn btn-primary btn-lg w-full justify-between px-4">
+      <span class="flex items-center gap-2.5">
+        <span data-bar-count data-fly-fallback class="min-w-6.5 h-6.5 px-1.5 rounded-lg bg-black/15 flex items-center justify-center text-sm">0</span>
+        <span data-bar-label>View cart</span>
+      </span>
+      <span data-bar-total class="tabular"></span>
+    </a>
+  </div>
+
+  <!-- Item sheet -->
+  <dialog id="item-sheet" class="sheet" aria-labelledby="sheet-name">
+    <form method="dialog" id="item-form" class="flex flex-col max-h-[calc(100dvh-2rem)]">
+      <div class="relative shrink-0">
+        <img data-sheet-img alt="" class="w-full h-52 object-cover block" hidden />
+        <button type="button" data-sheet-close class="icon-btn icon-btn-round absolute right-3 top-3 border-0 shadow-sm" aria-label="Close">
+          <Icon name="x" size={20} />
+        </button>
+      </div>
+      <div class="overflow-y-auto px-5 pt-5 pb-4 flex flex-col gap-5">
+        <div class="flex flex-col gap-1.5" data-sheet-head>
+          <div class="flex items-start justify-between gap-3">
+            <h2 id="sheet-name" class="text-xl font-extrabold" data-sheet-name></h2>
+            <button type="button" class="fav-btn" data-fav="item" data-fav-id="" data-fav-name="" data-sheet-fav aria-pressed="false" aria-label="Save to favourites">
+              <Icon name="bookmark" size={20} />
+            </button>
+          </div>
+          <p class="text-[0.9375rem] text-muted leading-relaxed" data-sheet-desc></p>
+          <p class="text-base font-bold tabular" data-sheet-price></p>
+        </div>
+        <div data-sheet-options class="flex flex-col gap-5"></div>
+        <p data-sheet-error role="alert" hidden class="text-sm font-semibold text-danger"></p>
+        {!vendor.is_open && (
+          <p class="flex gap-2 items-start p-3 rounded-lg bg-warning-soft text-warning-ink text-sm">
+            <Icon name="clock" size={18} class="shrink-0 mt-0.5" />
+            <span>{vendor.name} is closed right now. You can order once they open at {status.replace('Opens at ', '')}.</span>
+          </p>
+        )}
+      </div>
+      <div class="shrink-0 border-t border-line px-4 pt-3 pb-[max(0.75rem,var(--sab))] flex items-center gap-2.5">
+        <div class="flex items-center h-11 rounded-full bg-fill px-1">
+          <button type="button" data-qty-minus class="size-9 rounded-full flex items-center justify-center text-ink-soft active:bg-surface" aria-label="One less">
+            <Icon name="minus" size={16} strokeWidth={2.4} />
+          </button>
+          <span data-qty-value class="min-w-6 text-center text-[0.9375rem] font-bold tabular" aria-live="polite">1</span>
+          <button type="button" data-qty-plus class="size-9 rounded-full flex items-center justify-center text-brand active:bg-surface" aria-label="One more">
+            <Icon name="plus" size={16} strokeWidth={2.4} />
+          </button>
+        </div>
+        <button type="button" data-sheet-add class="btn btn-primary flex-1 !min-h-11 !rounded-full justify-between px-4 text-[0.9375rem]">
+          <span data-add-label>Add to cart</span>
+          <span data-add-total class="tabular"></span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <div
+    id="toast"
+    role="status"
+    aria-live="polite"
+    hidden
+    data-toast class="fixed left-1/2 -translate-x-1/2 bottom-28 lg:bottom-8 z-50 bg-ink text-paper text-sm font-semibold px-4 py-3 rounded-xl shadow-lg"
+  >
+  </div>
+
+  <script type="application/json" id="menu-data" set:html={menuData}></script>
+</AppLayout>
+
+<script>
+  import { addLine, cartCount, cartSubtotal, onCartChange, qtyOfItem, type CartOption } from '../../lib/cart';
+  import { confirmAction } from '../../lib/confirm';
+  import { isFav, onFavChange } from '../../lib/favourites';
+  import { money } from '../../lib/format';
+  import { flyToCart } from '../../lib/fly-to-cart';
+
+  type Opt = { name: string; required: boolean; max: number; choices: { name: string; price: number }[] };
+  type Item = {
+    id: string;
+    name: string;
+    description: string;
+    price: number;
+    image_url: string | null;
+    options: Opt[];
+    is_available: boolean;
+  };
+  type MenuData = { vendor: { id: string; slug: string; name: string; is_open: boolean; delivery_fee: number }; items: Item[] };
+
+  const data = JSON.parse(document.getElementById('menu-data')!.textContent || '{}') as MenuData;
+  const vendor = { vendorId: data.vendor.id, vendorSlug: data.vendor.slug, vendorName: data.vendor.name, deliveryFee: data.vendor.delivery_fee };
+  const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
+
+  // ---------- Toast ----------
+  const toast = $('#toast');
+  let toastTimer = 0;
+  function showToast(text: string) {
+    toast.textContent = text;
+    toast.hidden = false;
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => (toast.hidden = true), 2200);
+  }
+
+  // ---------- Item sheet ----------
+  const sheet = $<HTMLDialogElement>('#item-sheet');
+  const sheetImg = $<HTMLImageElement>('[data-sheet-img]', sheet);
+  const sheetName = $('[data-sheet-name]', sheet);
+  const sheetDesc = $('[data-sheet-desc]', sheet);
+  const sheetPrice = $('[data-sheet-price]', sheet);
+  const sheetOptions = $('[data-sheet-options]', sheet);
+  const sheetError = $('[data-sheet-error]', sheet);
+  const qtyValue = $('[data-qty-value]', sheet);
+  const addLabel = $('[data-add-label]', sheet);
+  const addTotal = $('[data-add-total]', sheet);
+
+  let current: Item | null = null;
+  let qty = 1;
+  // The dish row that was tapped: its photo flies to the cart when added
+  let opener: HTMLElement | null = null;
+
+  function selectedOptions(): CartOption[] {
+    if (!current) return [];
+    const out: CartOption[] = [];
+    current.options.forEach((group, gi) => {
+      sheetOptions.querySelectorAll<HTMLInputElement>(`input[name="opt-${gi}"]:checked`).forEach((input) => {
+        const choice = group.choices[Number(input.value)];
+        if (choice) out.push({ group: group.name, choice: choice.name, price: choice.price });
+      });
+    });
+    return out;
+  }
+
+  function refreshTotal() {
+    if (!current) return;
+    const unit = current.price + selectedOptions().reduce((s, o) => s + o.price, 0);
+    qtyValue.textContent = String(qty);
+    addLabel.textContent = qty === 1 ? 'Add to cart' : `Add ${qty} to cart`;
+    addTotal.textContent = money(unit * qty);
+  }
+
+  function buildOptions(item: Item) {
+    sheetOptions.replaceChildren();
+    item.options.forEach((group, gi) => {
+      const fieldset = document.createElement('fieldset');
+      fieldset.className = 'flex flex-col gap-2';
+      const legend = document.createElement('legend');
+      legend.className = 'w-full flex items-baseline justify-between gap-3 mb-2';
+      const title = document.createElement('span');
+      title.className = 'text-base font-bold';
+      title.textContent = group.name;
+      const hint = document.createElement('span');
+      hint.className = group.required ? 'text-xs font-bold text-brand-ink' : 'text-xs font-semibold text-muted';
+      hint.textContent = group.required
+        ? group.max === 1 ? 'Required' : `Required, up to ${group.max}`
+        : group.max === 1 ? 'Optional' : `Optional, up to ${group.max}`;
+      legend.append(title, hint);
+      fieldset.append(legend);
+
+      group.choices.forEach((choice, ci) => {
+        const label = document.createElement('label');
+        label.className =
+          'flex items-center gap-3 min-h-12 px-3.5 py-2 rounded-xl border border-line-strong has-[:checked]:border-brand has-[:checked]:bg-brand-tint';
+        const input = document.createElement('input');
+        input.type = group.max === 1 ? 'radio' : 'checkbox';
+        input.name = `opt-${gi}`;
+        input.value = String(ci);
+        input.className = 'size-5 text-brand border-line-strong focus:ring-brand';
+        if (group.max === 1) input.classList.add('rounded-full');
+        else input.classList.add('rounded');
+        if (group.required && group.max === 1 && ci === 0) input.checked = true;
+        input.addEventListener('change', () => {
+          if (input.type === 'checkbox') {
+            const checked = fieldset.querySelectorAll('input:checked').length;
+            if (checked > group.max) {
+              input.checked = false;
+              sheetError.textContent = `You can choose up to ${group.max} for ${group.name}.`;
+              sheetError.hidden = false;
+              return;
+            }
+          }
+          sheetError.hidden = true;
+          refreshTotal();
+        });
+        const name = document.createElement('span');
+        name.className = 'flex-1 text-[0.9375rem] font-medium';
+        name.textContent = choice.name;
+        label.append(input, name);
+        if (choice.price > 0) {
+          const price = document.createElement('span');
+          price.className = 'text-sm text-muted tabular';
+          price.textContent = `+ ${money(choice.price)}`;
+          label.append(price);
+        }
+        fieldset.append(label);
+      });
+      sheetOptions.append(fieldset);
+    });
+  }
+
+  function track(event: 'item_view' | 'add_to_cart', itemId?: string) {
+    const body = new Blob([JSON.stringify({ vendorId: data.vendor.id, itemId, event })], { type: 'application/json' });
+    try {
+      navigator.sendBeacon('/api/track', body);
+    } catch {
+      /* tracking is best-effort */
+    }
+  }
+
+  function openItem(id: string) {
+    const item = data.items.find((i) => i.id === id);
+    if (!item || !item.is_available) return;
+    track('item_view', item.id);
+    current = item;
+    qty = 1;
+    sheetError.hidden = true;
+    if (item.image_url) {
+      sheetImg.src = item.image_url;
+      sheetImg.alt = item.name;
+      sheetImg.hidden = false;
+    } else {
+      sheetImg.hidden = true;
+    }
+    sheetName.textContent = item.name;
+    sheetDesc.textContent = item.description;
+    sheetDesc.hidden = !item.description;
+    sheetPrice.textContent = money(item.price);
+    const favBtn = $<HTMLButtonElement>('[data-sheet-fav]', sheet);
+    favBtn.dataset.favId = item.id;
+    favBtn.dataset.favName = item.name;
+    const on = isFav('item', item.id);
+    favBtn.setAttribute('aria-pressed', String(on));
+    favBtn.setAttribute('aria-label', on ? `Remove ${item.name} from favourites` : `Save ${item.name} to favourites`);
+    buildOptions(item);
+    refreshTotal();
+    const addBtn = $<HTMLButtonElement>('[data-sheet-add]', sheet);
+    addBtn.disabled = !data.vendor.is_open;
+    sheet.showModal();
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('[data-open-item]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      opener = btn;
+      openItem(btn.dataset.openItem!);
+    });
+  });
+
+  $('[data-sheet-close]', sheet).addEventListener('click', () => sheet.close());
+  sheet.addEventListener('click', (e) => {
+    if (e.target === sheet) sheet.close(); // tap outside
+  });
+  $('[data-qty-minus]', sheet).addEventListener('click', () => {
+    qty = Math.max(1, qty - 1);
+    refreshTotal();
+  });
+  $('[data-qty-plus]', sheet).addEventListener('click', () => {
+    qty = Math.min(50, qty + 1);
+    refreshTotal();
+  });
+
+  $('[data-sheet-add]', sheet).addEventListener('click', async () => {
+    if (!current || !data.vendor.is_open) return;
+    const options = selectedOptions();
+    const missing = current.options.find((g) => g.required && !options.some((o) => o.group === g.name));
+    if (missing) {
+      sheetError.textContent = `Choose an option for ${missing.name}.`;
+      sheetError.hidden = false;
+      return;
+    }
+    const unitPrice = current.price + options.reduce((s, o) => s + o.price, 0);
+    const line = { itemId: current.id, name: current.name, unitPrice, qty, options, image: current.image_url };
+
+    let result = addLine(vendor, line);
+    if (result === 'conflict') {
+      sheet.close();
+      const yes = await confirmAction({
+        title: 'Start a new cart?',
+        message: `Your cart has food from another restaurant. Adding this will remove those items.`,
+        confirmLabel: 'Start new cart',
+        danger: true,
+      });
+      if (!yes) return;
+      result = addLine(vendor, line, true);
+    }
+    if (sheet.open) sheet.close();
+    track('add_to_cart', current.id);
+    flyToCart(opener?.querySelector<HTMLElement>('.img-frame, .food-sketch') ?? null);
+    showToast(qty === 1 ? `${current.name} added` : `${qty} × ${current.name} added`);
+  });
+
+  // ---------- Cart displays ----------
+  const bar = $('[data-cart-bar]');
+  const sideLines = $('[data-side-lines]');
+
+  onCartChange((cart) => {
+    const mine = cart && cart.vendorId === data.vendor.id ? cart : null;
+
+    document.querySelectorAll<HTMLElement>('[data-qty-for]').forEach((el) => {
+      const n = qtyOfItem(el.dataset.qtyFor!, mine);
+      el.textContent = `${n} in cart`;
+      el.hidden = n === 0;
+    });
+
+    // Phone bar
+    const count = cartCount(cart);
+    bar.hidden = count === 0;
+    $('[data-bar-count]', bar).textContent = String(count);
+    $('[data-bar-label]', bar).textContent = mine || !cart ? 'View cart' : `View cart from ${cart.vendorName}`;
+    $('[data-bar-total]', bar).textContent = money(cartSubtotal(cart));
+
+    // Desktop side cart
+    sideLines.replaceChildren();
+    const other = $('[data-side-other]');
+    other.hidden = !(cart && !mine);
+    if (cart && !mine) other.textContent = `Your cart has food from ${cart.vendorName}.`;
+    $('[data-side-empty]').hidden = !!cart;
+    (mine?.lines ?? []).forEach((l) => {
+      const li = document.createElement('li');
+      li.className = 'flex justify-between gap-3';
+      const left = document.createElement('span');
+      left.className = 'flex flex-col';
+      const name = document.createElement('span');
+      name.className = 'font-semibold';
+      name.textContent = `${l.qty}× ${l.name}`;
+      left.append(name);
+      if (l.options.length) {
+        const opts = document.createElement('span');
+        opts.className = 'text-xs text-muted';
+        opts.textContent = l.options.map((o) => o.choice).join(', ');
+        left.append(opts);
+      }
+      const price = document.createElement('span');
+      price.className = 'tabular whitespace-nowrap';
+      price.textContent = money(l.unitPrice * l.qty);
+      li.append(left, price);
+      sideLines.append(li);
+    });
+    $('[data-side-total]').hidden = !mine;
+    $('[data-side-subtotal]').textContent = money(cartSubtotal(mine));
+    $('[data-side-checkout]').hidden = !mine;
+    $('[data-side-cart]').hidden = !cart;
+  });
+
+  // ---------- Hearts on dish rows ----------
+  onFavChange((f) => {
+    document.querySelectorAll<HTMLElement>('[data-fav-dot]').forEach((el) => {
+      el.hidden = !f.items.includes(el.dataset.favDot!);
+    });
+  });
+
+  // ---------- Highlight the tab for the section on screen ----------
+  const tabs = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-tab]'));
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (!visible) return;
+      tabs.forEach((t) => {
+        const on = t.dataset.tab === visible.target.id;
+        if (on) {
+          t.setAttribute('aria-current', 'true');
+          t.parentElement?.scrollTo({ left: Math.max(0, t.offsetLeft - 16), behavior: 'smooth' });
+        } else t.removeAttribute('aria-current');
+      });
+    },
+    { rootMargin: '-80px 0px -60% 0px' },
+  );
+  document.querySelectorAll('[data-section]').forEach((s) => observer.observe(s));
+</script>

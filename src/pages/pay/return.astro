@@ -1,0 +1,23 @@
+---
+// Paystack sends the customer here after the payment page. We ask Paystack
+// directly whether it worked (never trusting the address alone), then show
+// the order.
+import { confirmPayment } from '../../data/store';
+import { flash } from '../../lib/actions';
+import { addMyOrder } from '../../lib/session';
+
+const reference = (Astro.url.searchParams.get('reference') || Astro.url.searchParams.get('trxref') || '').slice(0, 80);
+if (!reference) return Astro.redirect('/orders', 303);
+
+try {
+  const { order, outcome, message } = await confirmPayment(reference);
+  addMyOrder(Astro.cookies, order.code);
+  if (outcome === 'paid') return Astro.redirect(`/orders/${order.code}?placed=1`, 303);
+  if (outcome === 'waiting') flash(Astro.cookies, 'Waiting for the payment to be confirmed. If you approved it, this page updates by itself.');
+  else if (message) flash(Astro.cookies, message);
+  return Astro.redirect(`/orders/${order.code}`, 303);
+} catch (e) {
+  flash(Astro.cookies, e instanceof Error ? e.message : "We couldn't check your payment. Open your order to try again.");
+  return Astro.redirect('/orders', 303);
+}
+---

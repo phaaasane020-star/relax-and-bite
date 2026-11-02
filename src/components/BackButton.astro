@@ -1,0 +1,16 @@
+---
+// "‹ Back" link. Goes to the previous page when the person came from inside
+// the app, otherwise to `href`.
+import Icon from './Icon.astro';
+
+interface Props {
+  href?: string;
+  label?: string;
+  class?: string;
+}
+const { href = '/', label = 'Back', class: className } = Astro.props;
+---
+
+<a href={href} data-back class:list={['back-link', className]} aria-label={label}>
+  <Icon name="chevron-left" size={22} strokeWidth={2.2} />
+</a>

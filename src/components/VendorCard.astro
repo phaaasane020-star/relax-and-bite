@@ -1,0 +1,90 @@
+---
+import Icon from './Icon.astro';
+import FoodImage from './FoodImage.astro';
+import type { Vendor } from '../data/types';
+import { vendorStatusLabel } from '../data/store';
+import { time12 } from '../lib/format';
+
+interface Props {
+  vendor: Vendor;
+  deliveryFee?: number;
+  localityName?: string;
+  /** Position in its list: cards arrive one after another */
+  index?: number;
+  layout?: 'card' | 'row';
+  class?: string;
+}
+const { vendor: v, localityName, layout = 'card', class: className, index } = Astro.props;
+const order = index === undefined ? undefined : `--i:${Math.min(index, 8)}`;
+const status = vendorStatusLabel(v);
+const cuisines = v.cuisine_tags.join(', ');
+---
+
+{
+  layout === 'card' ? (
+    <div class:list={['food-card', index === undefined ? 'reveal' : 'food-in', className]} style={order}>
+      <a href={`/vendors/${v.slug}`} class="group flex flex-col h-full no-underline text-ink">
+        <div class="img-zoom relative aspect-[3/2] overflow-hidden">
+          <FoodImage src={v.cover_url} alt={`Food from ${v.name}`} class:list={['size-full', !v.is_open && 'grayscale-[0.5] opacity-80']} />
+          <span class:list={['food-card-badge', v.is_open ? 'text-success' : 'text-ink-soft']}>
+            {v.is_open && <span class="live-dot size-1.75 rounded-full bg-success"></span>}
+            {v.is_open ? status : v.opens_at ? `Opens ${time12(v.opens_at)}` : 'Closed'}
+          </span>
+        </div>
+        <div class="flex flex-col flex-1 px-3.5 pt-3 pb-3.5 min-w-0">
+          <h3 class:list={['text-base font-bold leading-snug truncate', !v.is_open && 'text-ink-soft']}>{v.name}</h3>
+          <p class="text-sm text-muted truncate">{v.prep_time_min}–{v.prep_time_max} min{cuisines && ` · ${cuisines}`}</p>
+          {localityName && <span class="text-xs text-muted mt-1 truncate">{localityName}</span>}
+        </div>
+      </a>
+      <button type="button" class="fav-btn food-card-save" data-fav="vendor" data-fav-id={v.id} data-fav-name={v.name} aria-pressed="false" aria-label={`Save ${v.name} to favourites`}>
+        <Icon name="bookmark" size={19} />
+      </button>
+    </div>
+  ) : (
+          <span class="absolute inset-0 flex items-center justify-center text-white text-lg font-bold">
+            {v.opens_at ? `Opens ${time12(v.opens_at)}` : 'Closed'}
+          </span>
+        )}
+      </div>
+      <div class="flex flex-col gap-1.5 pr-1">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class:list={['text-[1.0625rem] font-bold truncate group-hover:underline underline-offset-2', !v.is_open && 'text-ink-soft']}>{v.name}</h3>
+        </div>
+        <p class="text-sm text-muted truncate">{cuisines}</p>
+        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold">
+          <span class="flex items-center gap-1.5">
+            <Icon name="clock" size={16} class="text-muted" />
+            {v.prep_time_min}–{v.prep_time_max} min
+          </span>
+          {localityName && (
+            <span class="flex items-center gap-1.5 text-muted font-medium">
+              <Icon name="pin" size={16} />
+              {localityName}
+            </span>
+          )}
+        </div>
+      </div>
+    </a>
+    <button type="button" class="fav-btn absolute right-3 top-3 border-0 shadow-sm" data-fav="vendor" data-fav-id={v.id} data-fav-name={v.name} aria-pressed="false" aria-label={`Save ${v.name} to favourites`}>
+      <Icon name="bookmark" size={20} />
+    </button>
+    </div>
+  ) : (
+    <div class:list={['relative', className]}>
+    <a href={`/vendors/${v.slug}`} class="card flex gap-3.5 items-center p-3 pr-16 no-underline text-ink hover:border-line-strong">
+      <div class="size-19 rounded-xl overflow-hidden shrink-0 bg-line">
+        <FoodImage src={v.cover_url} alt="" class:list={['size-full', !v.is_open && 'brightness-[0.6]']} />
+      </div>
+      <div class="flex flex-col gap-1 min-w-0">
+        <h3 class="text-base font-bold truncate">{v.name}</h3>
+        <p class="text-sm text-muted truncate">{cuisines}</p>
+        <span class:list={['text-[0.8125rem] font-bold', v.is_open ? 'text-success' : 'text-muted']}>{status}</span>
+      </div>
+    </a>
+    <button type="button" class="fav-btn absolute right-3 top-1/2 -translate-y-1/2" data-fav="vendor" data-fav-id={v.id} data-fav-name={v.name} aria-pressed="false" aria-label={`Save ${v.name} to favourites`}>
+      <Icon name="bookmark" size={20} />
+    </button>
+    </div>
+  )
+}

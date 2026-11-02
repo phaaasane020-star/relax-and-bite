@@ -1,0 +1,200 @@
+---
+import { clientInfo } from '../../lib/client-info';
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Alert from '../../components/panel/Alert.astro';
+import ReasonDialog from '../../components/panel/ReasonDialog.astro';
+import { adminAssignRider, adminCancel, adminForceDeliver, audit, getOrders, isActive, minutesSince, STATUS_BADGE, STATUS_SHORT } from '../../data/store';
+import { getRider, listRiders } from '../../data/partners';
+import { field, flash, takeFlash } from '../../lib/actions';
+import { dateTime, money, prettyPhone } from '../../lib/format';
+import type { OrderStatus } from '../../data/types';
+
+let error = '';
+const view = Astro.url.searchParams.get('view') ?? 'active';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = field(form, 'action');
+  const code = field(form, 'code');
+  try {
+    if (action === 'assign') {
+      const riderId = field(form, 'rider_id');
+      const rider = riderId ? await getRider(riderId) : null;
+      if (riderId && !rider) throw new Error('Rider not found.');
+      await adminAssignRider(code, rider ?? null);
+      flash(Astro.cookies, rider ? `${code} assigned to ${rider.full_name}.` : `Rider removed from ${code}.`);
+    } else if (action === 'cancel') {
+      await adminCancel(code, field(form, 'reason'));
+      flash(Astro.cookies, `${code} cancelled.`);
+    } else if (action === 'force_deliver') {
+      const target = field(form, 'id');
+      await adminForceDeliver(target, field(form, 'reason'), Astro.locals.partner!.full_name);
+      flash(Astro.cookies, `${target} marked as delivered.`);
+    }
+    const who = `${Astro.locals.partner!.full_name} (admin)`;
+    const reason = field(form, 'reason');
+    const target = code || field(form, 'id');
+    const riderName = action === 'assign' ? (await getRider(field(form, 'rider_id')))?.full_name : undefined;
+    const what: Record<string, string> = {
+      assign: riderName ? `Gave ${target} to ${riderName}` : `Removed the rider from ${target}`,
+      cancel: `Cancelled ${target}`,
+      force_deliver: `Marked ${target} delivered without the code`,
+    };
+    await audit(who, `${what[action] ?? action}${reason ? `: ${reason}` : ''}`, { kind: 'admin', ...clientInfo(Astro) });
+    return Astro.redirect(`/admin/orders?view=${encodeURIComponent(view)}`, 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const filters: { key: string; label: string; status?: OrderStatus | 'active' }[] = [
+  { key: 'active', label: 'In progress', status: 'active' },
+  { key: 'all', label: 'All' },
+  { key: 'delivered', label: 'Delivered', status: 'delivered' },
+  { key: 'cancelled', label: 'Cancelled', status: 'cancelled' },
+];
+const current = filters.find((f) => f.key === view) ?? filters[0];
+const allOrders = await getOrders(current.status ? { status: current.status } : {});
+const orders = allOrders.slice(0, 200);
+const riders = (await listRiders()).filter((r) => r.account.status === 'approved');
+const success = takeFlash(Astro.cookies);
+const payLabel = { momo: 'MoMo', card: 'Card', cash: 'Cash' } as const;
+---
+
+<PanelLayout title="All orders" refresh={view === 'active' ? 30 : 0}>
+  <Alert error={error} success={success} />
+  <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Orders</h1>
+
+  <nav aria-label="Filter orders" class="mt-5 flex gap-2 overflow-x-auto hide-scrollbar">
+    {filters.map((f) => <a href={`/admin/orders?view=${f.key}`} class="chip" aria-current={f.key === current.key ? 'true' : undefined}>{f.label}</a>)}
+  </nav>
+
+  <section class="card mt-5 overflow-hidden" aria-label="Orders">
+    {
+      orders.length === 0 ? (
+        <p class="p-6 text-sm text-muted">No orders here.</p>
+      ) : (
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm rtable">
+            <thead class="bg-paper text-left text-muted">
+              <tr>
+                <th class="px-4 py-3 font-semibold">Order</th>
+                <th class="px-4 py-3 font-semibold">Restaurant</th>
+                <th class="px-4 py-3 font-semibold">Customer</th>
+                <th class="px-4 py-3 font-semibold">Total</th>
+                <th class="px-4 py-3 font-semibold">Status</th>
+                <th class="px-4 py-3 font-semibold">Rider</th>
+                <th class="px-4 py-3 font-semibold"><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-line align-top">
+              {orders.map((o) => (
+                <tr>
+                  <td class="px-4 py-3 whitespace-nowrap">
+                    <span class="block font-bold tabular">{o.code}</span>
+                    <span class="block text-xs text-muted">{isActive(o.status) ? `${minutesSince(o.created_at)} min ago` : dateTime(o.created_at)}</span>
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap">{o.vendor_name}</td>
+                  <td class="px-4 py-3 min-w-44">
+                    <span class="block tabular">{prettyPhone(o.customer_phone)}</span>
+                    <span class="block text-xs text-muted">{[o.delivery_landmark, o.locality_name, o.zone_name].filter(Boolean).join(", ")}</span>
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap">
+                    <span class="block font-bold tabular">{money(o.total)}</span>
+                    <span class="block text-xs text-muted">{payLabel[o.payment_method]}, {o.payment_status}</span>
+                    {o.discount > 0 && <span class="block text-xs text-success">{o.promo_code}, -{money(o.discount)}</span>}
+                  </td>
+                  <td class="px-4 py-3">
+                    <span class:list={['badge h-6 text-xs', STATUS_BADGE[o.status]]}>{STATUS_SHORT[o.status]}</span>
+                    {o.status === 'cancelled' && o.cancel_reason && <span class="block text-xs text-muted mt-1 max-w-40">{o.cancel_reason}</span>}
+                  </td>
+                  <td class="px-4 py-3 min-w-52">
+                    {isActive(o.status) && o.status !== 'picked_up' ? (
+                      <form method="post" class="flex gap-2">
+                        <input type="hidden" name="action" value="assign" />
+                        <input type="hidden" name="code" value={o.code} />
+                        <label class="sr-only" for={`rider-${o.code}`}>Rider for {o.code}</label>
+                        <select id={`rider-${o.code}`} name="rider_id" class="field-input min-h-11 py-2 text-base">
+                          <option value="">No rider</option>
+                          {riders.map((r) => (
+                            <option value={r.id} selected={r.id === o.rider_id}>
+                              {r.full_name}{r.is_online ? '' : ' (offline)'}
+                            </option>
+                          ))}
+                        </select>
+                        <button type="submit" class="btn btn-secondary min-h-11 px-4">Save</button>
+                      </form>
+                    ) : (
+                      <span class:list={[o.rider_name ? '' : 'text-muted']}>{o.rider_name || 'None'}</span>
+                    )}
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    {o.status === 'picked_up' && (
+                      <button type="button" data-reason-open="deliver-dialog" data-id={o.code} data-name={o.code} class="btn btn-ghost min-h-9 text-sm whitespace-nowrap">
+                        Mark delivered
+                      </button>
+                    )}
+                    {isActive(o.status) && (
+                      <button type="button" data-cancel={o.code} class="btn btn-ghost text-danger min-h-9 text-sm">Cancel</button>
+                    )}
+                    {o.delivery_code_attempts > 0 && isActive(o.status) && (
+                      <span class="block text-xs text-danger mt-1">{o.delivery_code_attempts} wrong code {o.delivery_code_attempts === 1 ? 'try' : 'tries'}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    }
+  </section>
+  {allOrders.length > orders.length && <p class="mt-3 text-sm text-muted">Showing the latest {orders.length} of {allOrders.length} orders.</p>}
+
+  <ReasonDialog
+    id="deliver-dialog"
+    action="force_deliver"
+    title="Mark delivered without code"
+    confirmLabel="Mark delivered"
+    hint="Only after you've called the customer and they confirm they have their food. This is saved in the activity log."
+    placeholder="For example, called customer, phone battery dead, confirmed received"
+  />
+
+  <dialog id="cancel-dialog" class="sheet" aria-labelledby="cancel-title">
+    <form
+      method="post"
+      class="p-6 flex flex-col gap-4"
+      data-confirm="Cancel this order?"
+      data-confirm-message="The customer, restaurant and rider will see it as cancelled. Online payments are refunded."
+      data-confirm-label="Cancel order"
+      data-confirm-danger="true"
+    >
+      <input type="hidden" name="action" value="cancel" />
+      <input type="hidden" name="code" />
+      <h2 id="cancel-title" class="text-lg font-extrabold">Cancel order</h2>
+      <div>
+        <label class="field-label" for="cancel-reason">Reason</label>
+        <input id="cancel-reason" name="reason" class="field-input" placeholder="For example, customer unreachable" />
+        <p class="field-hint">The customer sees this reason.</p>
+      </div>
+      <div class="flex gap-3">
+        <button type="button" data-close class="btn btn-secondary flex-1">Keep order</button>
+        <button type="submit" class="btn btn-danger flex-1">Cancel order</button>
+      </div>
+    </form>
+  </dialog>
+</PanelLayout>
+
+<script>
+  const dialog = document.getElementById('cancel-dialog') as HTMLDialogElement;
+  const form = dialog.querySelector('form')!;
+  document.querySelectorAll<HTMLButtonElement>('[data-cancel]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const code = btn.dataset.cancel!;
+      form.reset();
+      dialog.querySelector('#cancel-title')!.textContent = `Cancel ${code}`;
+      (form.elements.namedItem('code') as HTMLInputElement).value = code;
+      dialog.showModal();
+    }),
+  );
+</script>

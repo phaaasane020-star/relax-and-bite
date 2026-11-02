@@ -1,0 +1,23 @@
+---
+// The logo: the mark (red square with a bite) and the name beside it.
+import LogoMark from './LogoMark.astro';
+
+interface Props {
+  size?: 'sm' | 'md' | 'lg';
+  class?: string;
+  /** Just the name, without the mark */
+  wordOnly?: boolean;
+}
+const { size = 'md', class: className, wordOnly = false } = Astro.props;
+const text = { sm: 'text-lg', md: 'text-[1.375rem]', lg: 'text-4xl' }[size];
+const mark = { sm: 28, md: 34, lg: 56 }[size];
+---
+
+<a
+  href="/"
+  aria-label="Relax&Bite home"
+  class:list={['inline-flex items-center gap-2 font-display font-extrabold tracking-tight leading-none no-underline', text, className]}
+>
+  {!wordOnly && <LogoMark size={mark} class="shrink-0" />}
+  <span><span class="text-ink">Relax&amp;</span><span class="text-logo-orange">Bite</span></span>
+</a>

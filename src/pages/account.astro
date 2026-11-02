@@ -1,0 +1,232 @@
+---
+import { clientInfo } from '../lib/client-info';
+import { audit } from '../data/store';
+import AppLayout from '../layouts/AppLayout.astro';
+import Icon from '../components/Icon.astro';
+import Logo from '../components/Logo.astro';
+import Copyright from '../components/Copyright.astro';
+import { SITE } from '../data/site';
+import { clearUser, getLocation, getMyOrders, getUser, setUser } from '../lib/session';
+import { getCustomerOrders, getZone } from '../data/store';
+import { getCustomer, updateProfile } from '../data/customers';
+import { UserError } from '../lib/supabase';
+import { prettyPhone } from '../lib/format';
+
+let profileError = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (form.get('action') === 'logout') {
+    const leaving = getUser(Astro.cookies);
+    if (leaving) await audit(`Customer ${leaving.email}`, 'Signed out', { kind: 'signout', ...clientInfo(Astro) });
+    clearUser(Astro.cookies);
+    return Astro.redirect('/', 303);
+  }
+  if (form.get('action') === 'profile') {
+    const me = getUser(Astro.cookies);
+    if (!me) return Astro.redirect('/account', 303);
+    try {
+      const saved = await updateProfile(me.id, String(form.get('name') ?? ''), String(form.get('phone') ?? ''));
+      setUser(Astro.cookies, { id: saved.id, email: saved.email, name: saved.name, phone: saved.phone });
+      return Astro.redirect('/account?saved=1', 303);
+    } catch (e) {
+      if (!(e instanceof UserError)) throw e;
+      profileError = e.message;
+    }
+  }
+}
+
+const user = getUser(Astro.cookies);
+const account = user ? await getCustomer(user.id) : undefined;
+const name = account?.name || user?.name || '';
+const phone = account?.phone ?? user?.phone ?? null;
+const orderCount = user ? (await getCustomerOrders(user.id, getMyOrders(Astro.cookies))).length : 0;
+const saved = Astro.url.searchParams.get('saved') === '1';
+const initials =
+  name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('') || (user?.email[0] ?? '?').toUpperCase();
+
+const loc = getLocation(Astro.cookies);
+const zone = loc ? await getZone(loc.zoneId) : undefined;
+const address = zone ? [loc?.landmark, zone.name].filter(Boolean).join(', ') : 'Choose your town';
+
+const links = [
+  { href: '/orders', icon: 'receipt', label: 'My orders', detail: 'Track an order or order again', open: undefined },
+  { href: '/account/notifications', icon: 'bell', label: 'Notifications', detail: 'Order and rider updates on this phone', open: undefined },
+  { href: '/help', icon: 'help', label: 'Help and support', detail: 'Questions, refunds and contact', open: undefined },
+  { href: '/privacy', icon: 'shield', label: 'Privacy Policy', detail: 'What we collect and why', open: undefined },
+  { href: '/terms', icon: 'document', label: 'Terms and Conditions', detail: 'The rules for using Relax&Bite', open: undefined },
+] as const;
+
+// Signed out: the same menu, without the account items
+const guestLinks = [
+  { href: '/help', icon: 'help', label: 'Help and support', detail: 'Questions, refunds and contact', open: undefined },
+  { href: '/privacy', icon: 'shield', label: 'Privacy Policy', open: undefined },
+  { href: '/terms', icon: 'document', label: 'Terms and Conditions', open: undefined },
+] as const;
+---
+
+<AppLayout title="Account" mobileHeader="none">
+  <!-- Hero: red band with the profile card -->
+  <section class="account-hero pt-[calc(var(--sat)+1.25rem)] md:pt-10 pb-14">
+    <div class="container-app max-w-2xl">
+      <h1 class="text-center text-white text-2xl md:text-3xl font-extrabold tracking-tight">{user ? 'Account' : 'Welcome'}</h1>
+      <div class="mt-5 rounded-3xl bg-surface shadow-[0_14px_34px_-14px_rgb(127_29_29/0.55)] p-5 sm:p-6">
+        {
+          user ? (
+            <>
+              <div class="flex items-center gap-4">
+                <span class="size-16 sm:size-18 rounded-full bg-brand text-on-brand flex items-center justify-center text-xl sm:text-2xl font-extrabold shrink-0" aria-hidden="true">
+                  {initials}
+                </span>
+                <div class="flex flex-col min-w-0">
+                  <span class="text-lg sm:text-xl font-extrabold truncate">{name || 'Add your name'}</span>
+                  <span class="text-sm text-muted truncate">{user.email}</span>
+                  {phone && <span class="text-sm text-muted tabular">{prettyPhone(phone)}</span>}
+                </div>
+              </div>
+              <button type="button" data-edit-profile class="btn btn-primary btn-lg w-full mt-5">Edit profile</button>
+            </>
+          ) : (
+            <>
+              <div class="flex items-center gap-4">
+                <span class="size-16 rounded-full bg-brand-soft text-brand flex items-center justify-center shrink-0" aria-hidden="true">
+                  <Icon name="user" size={30} />
+                </span>
+                <div class="flex flex-col min-w-0">
+                  <span class="text-lg font-extrabold">Sign in to {SITE.name}</span>
+                  <span class="text-sm text-muted">Track your orders and save your favourites.</span>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-3 mt-5">
+                <a href="/login?next=/account" data-open="auth" data-auth-mode="signup" class="btn btn-primary btn-lg w-full no-underline">Sign up</a>
+                <a href="/login?next=/account" data-open="auth" class="btn btn-secondary btn-lg w-full no-underline">Sign in</a>
+              </div>
+            </>
+          )
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- Sheet that rises over the hero -->
+  <div class="account-sheet relative -mt-8 bg-paper rounded-t-[1.75rem]">
+    <div class="container-app max-w-2xl pt-5 flex flex-col gap-4">
+      {saved && <p role="status" class="rounded-xl bg-success-soft text-success font-semibold text-sm px-4 py-3">Profile saved.</p>}
+
+      {
+        user && (
+          <dl class="card grid grid-cols-2 divide-x divide-line py-4 text-center">
+            <a href="/orders" class="flex flex-col-reverse gap-0.5 no-underline text-ink">
+              <dt class="text-[0.8125rem] text-muted">Orders</dt>
+              <dd class="text-xl font-extrabold tabular">{orderCount}</dd>
+            </a>
+            <a href="/location?next=/account" data-open="location" class="flex flex-col-reverse gap-0.5 no-underline text-ink min-w-0 px-2">
+              <dt class="text-[0.8125rem] text-muted">Town</dt>
+              <dd class="text-xl font-extrabold truncate">{zone?.name ?? '—'}</dd>
+            </a>
+          </dl>
+        )
+      }
+
+      <a href="/location?next=/account" data-open="location" class="card flex items-center gap-4 p-4 no-underline text-ink hover:border-line-strong">
+        <span class="acc-icon"><Icon name="pin" size={20} /></span>
+        <span class="flex-1 min-w-0 flex flex-col">
+          <span class="font-bold">Delivery address</span>
+          <span class="text-sm text-muted truncate">{address}</span>
+        </span>
+        <span class="text-sm font-bold text-brand">Change</span>
+      </a>
+
+      <ul class="card divide-y divide-line overflow-hidden">
+        {
+          (user ? links : guestLinks).map((l) => (
+            <li>
+              <a href={l.href} data-open={l.open} class="flex items-center gap-4 px-4 py-3.5 no-underline text-ink hover:bg-fill">
+                <span class="acc-icon"><Icon name={l.icon} size={20} /></span>
+                <span class="flex-1 min-w-0 flex flex-col">
+                  <span class="font-bold">{l.label}</span>
+                  <span class="text-sm text-muted truncate">{l.detail}</span>
+                </span>
+                <Icon name="chevron-right" size={18} class="text-faint shrink-0" />
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+
+      <!-- Footer: join as a partner, sign out -->
+      <div class="mt-4 flex flex-col gap-3">
+        <a href="/partner/register/rider" class="partner-cta bg-raised text-ink border border-line">
+          <span class="partner-cta-icon bg-white/10 text-brand"><Icon name="bike" size={24} /></span>
+          <span class="flex-1 min-w-0 flex flex-col gap-0.5">
+            <span class="font-extrabold text-[1.0625rem]">Become a delivery rider</span>
+            <span class="text-sm text-muted">Earn money delivering orders around your town.</span>
+          </span>
+          <Icon name="chevron-right" size={20} class="text-brand shrink-0" />
+        </a>
+        <a href="/partner/register/vendor" class="partner-cta bg-brand text-on-brand">
+          <span class="partner-cta-icon bg-black/10 text-on-brand"><Icon name="store" size={24} /></span>
+          <span class="flex-1 min-w-0 flex flex-col gap-0.5">
+            <span class="font-extrabold text-[1.0625rem]">Add your restaurant</span>
+            <span class="text-sm text-on-brand/75">Take your restaurant or shop online with {SITE.name}.</span>
+          </span>
+          <Icon name="chevron-right" size={20} class="shrink-0" />
+        </a>
+        <p class="text-center text-sm text-muted mt-1">
+          Already a partner? <a href="/partner/login" class="font-bold text-brand">Partner sign in</a>
+        </p>
+        {
+          user && (
+            <form method="post" data-confirm="Sign out?" data-confirm-message="You can sign in again any time with Google or your email." data-confirm-label="Sign out">
+              <input type="hidden" name="action" value="logout" />
+              <button type="submit" class="btn btn-lg w-full bg-danger-soft text-danger hover:brightness-95 border-0">
+                <Icon name="logout" size={19} /> Sign out
+              </button>
+            </form>
+          )
+        }
+      </div>
+
+      <Copyright show="app" version class="mt-6 mb-4 text-xs text-center" />
+    </div>
+  </div>
+
+  {
+    user && (
+      <dialog id="edit-profile" class="sheet" aria-labelledby="edit-profile-title" data-profile-dialog data-open-now={profileError ? '1' : undefined}>
+        <form method="post" class="p-6 flex flex-col gap-4">
+          <input type="hidden" name="action" value="profile" />
+          <div class="flex items-center justify-between gap-3">
+            <h2 id="edit-profile-title" class="text-lg font-extrabold">Edit profile</h2>
+            <button type="button" data-close class="icon-btn icon-btn-round border-0 -mr-2" aria-label="Close"><Icon name="x" size={20} /></button>
+          </div>
+          {profileError && <p data-form-error role="alert" class="text-sm font-semibold text-danger">{profileError}</p>}
+          <div>
+            <label for="pf-name" class="field-label">Your name</label>
+            <input id="pf-name" name="name" class="field-input" value={name} minlength="2" maxlength="80" autocomplete="name" required />
+          </div>
+          <div>
+            <label for="pf-phone" class="field-label">Phone number</label>
+            <input id="pf-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" class="field-input" value={phone ?? ''} placeholder="024 123 4567" />
+            <p class="field-hint">Filled in for you at checkout, so the rider can call you.</p>
+          </div>
+          <div>
+            <span class="field-label">Email</span>
+            <p class="text-muted">{user.email}</p>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg w-full">Save</button>
+        </form>
+      </dialog>
+    )
+  }
+</AppLayout>
+
+<script>
+  const dialog = document.querySelector<HTMLDialogElement>('[data-profile-dialog]');
+  document.querySelector('[data-edit-profile]')?.addEventListener('click', () => dialog?.showModal());
+  if (dialog?.dataset.openNow) dialog.showModal();
+</script>

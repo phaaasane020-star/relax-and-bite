@@ -1,0 +1,130 @@
+---
+// Town picker for delivery and store addresses. (Localities were removed:
+// people choose their town and describe where they are in the landmark box.)
+// With `locate`, a "Use my location" button checks the person is inside a
+// delivery town and warns straight away if they're not.
+// The locality props are still accepted so older pages keep working.
+import Icon from './Icon.astro';
+import type { Zone } from '../data/types';
+
+interface Props {
+  zones: Zone[];
+  zoneId?: number | null;
+  localityId?: number | null;
+  idPrefix: string;
+  townLabel?: string;
+  localityLabel?: string;
+  showFees?: boolean;
+  locate?: boolean;
+  zoneField?: string;
+  localityField?: string;
+  allowOther?: boolean;
+  area?: string;
+}
+const { zones, zoneId, idPrefix, townLabel = 'Town', locate = false, zoneField = 'zone_id' } = Astro.props;
+
+// No town chosen until the person picks one (or it's saved from before)
+const selectedZone = zones.find((z) => z.id === zoneId)?.id;
+const data = JSON.stringify({
+  towns: zones.map((z) => ({ id: z.id, name: z.name, lat: z.lat, lng: z.lng, radius_km: z.radius_km })),
+}).replace(/</g, '\\u003c');
+---
+
+<div class="flex flex-col gap-3" data-locality-picker>
+  {
+    locate && (
+      <div class="flex flex-col gap-2">
+        <button type="button" data-locate class="btn btn-secondary self-start">
+          <Icon name="pin" size={18} class="text-brand" />
+          <span data-locate-label>Use my location</span>
+        </button>
+        <div data-locate-msg role="status" aria-live="polite" hidden class="flex gap-2.5 items-start p-3 rounded-lg text-sm"></div>
+      </div>
+    )
+  }
+
+  <div class="sm:max-w-[calc(50%-0.5rem)]">
+    {
+      zones.length === 1 ? (
+        <>
+          <span class="field-label">{townLabel}</span>
+          <input type="hidden" name={zoneField} value={zones[0].id} data-zone-select />
+          <p class="field-input flex items-center bg-fill text-ink-soft">
+            {zones[0].name}
+          </p>
+        </>
+      ) : (
+        <>
+          <label for={`${idPrefix}-zone`} class="field-label">{townLabel}</label>
+          <select id={`${idPrefix}-zone`} name={zoneField} class="field-input" required data-zone-select>
+            <option value="" disabled selected={!selectedZone}>Choose your town</option>
+            {zones.map((z) => (
+              <option value={z.id} selected={z.id === selectedZone}>
+                {z.name}
+              </option>
+            ))}
+          </select>
+        </>
+      )
+    }
+  </div>
+  <script type="application/json" data-picker-data set:html={data}></script>
+</div>
+
+<script>
+  import { locate, type TownArea } from '../lib/geo';
+  import { confirmAction } from '../lib/confirm';
+
+  const ICONS = {
+    ok: '<path d="m5 12 5 5 9-10"/>',
+    warn: '<path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-locality-picker]').forEach((root) => {
+    const zone = root.querySelector<HTMLSelectElement | HTMLInputElement>('[data-zone-select]')!;
+    const data = JSON.parse(root.querySelector('[data-picker-data]')!.textContent || '{}') as { towns: TownArea[] };
+
+    // "Use my location"
+    const btn = root.querySelector<HTMLButtonElement>('[data-locate]');
+    const msg = root.querySelector<HTMLElement>('[data-locate-msg]');
+    if (!btn || !msg) return;
+    const label = btn.querySelector<HTMLElement>('[data-locate-label]')!;
+    const towns = data.towns.map((t) => t.name).join(', ').replace(/, ([^,]*)$/, ' and $1');
+
+    const show = (tone: 'ok' | 'warn' | 'info', text: string) => {
+      const tones = { ok: 'bg-success-soft text-success', warn: 'bg-warning-soft text-warning-ink', info: 'bg-fill text-ink-soft' };
+      msg.className = `flex gap-2.5 items-start p-3 rounded-lg text-sm ${tones[tone]}`;
+      msg.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0 mt-0.5">${ICONS[tone]}</svg><span></span>`;
+      msg.querySelector('span')!.textContent = text;
+      msg.hidden = false;
+    };
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      label.textContent = 'Finding you…';
+      const result = await locate(data.towns);
+      btn.disabled = false;
+      label.textContent = 'Use my location';
+
+      if (!result.ok) {
+        show('info', result.reason);
+      } else if (result.inside) {
+        if (zone instanceof HTMLSelectElement) {
+          zone.value = String(result.inside.id);
+          zone.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        show('ok', `You're in ${result.inside.name}, so we can deliver to you.`);
+      } else {
+        const km = result.km !== null ? Math.round(result.km) : null;
+        const where = result.nearest && km !== null ? `You're about ${km} km from ${result.nearest.name}. ` : '';
+        confirmAction({
+          title: "We don't deliver to where you are yet",
+          message: `${where}Relax&Bite delivers in ${towns} for now. You can still choose one of these towns to order for someone there.`,
+          confirmLabel: 'OK',
+          alertOnly: true,
+        });
+      }
+    });
+  });
+</script>

@@ -1,0 +1,292 @@
+---
+// The outline of one kind of screen, drawn to match the real page: where the
+// photos, titles, buttons and lists sit. Used by PageSkeleton.
+import type { SkeletonKind } from '../lib/skeleton';
+interface Props {
+  kind: SkeletonKind;
+}
+const { kind } = Astro.props;
+---
+
+{
+  /* Home: deliver-to and town with three round buttons, round search, food chips, restaurant cards */
+  kind === 'home' && (
+    <div class="container-app flex flex-col gap-4 sk-seq">
+      <div class="flex items-center gap-3">
+        <span class="flex flex-col gap-1.5 flex-1">
+          <span class="skeleton skeleton-line w-20"></span>
+          <span class="skeleton skeleton-title w-32 h-5"></span>
+        </span>
+        <span class="skeleton size-11 rounded-full shrink-0"></span>
+        <span class="skeleton size-11 rounded-full shrink-0"></span>
+        <span class="skeleton size-11 rounded-full shrink-0"></span>
+      </div>
+      <span class="skeleton h-12 rounded-full"></span>
+      <div class="flex gap-2 overflow-hidden">
+        <span class="skeleton h-9 w-24 rounded-full shrink-0"></span>
+        <span class="skeleton h-9 w-28 rounded-full shrink-0"></span>
+        <span class="skeleton h-9 w-22 rounded-full shrink-0"></span>
+        <span class="skeleton h-9 w-20 rounded-full shrink-0"></span>
+      </div>
+      <div class="flex justify-between items-center pt-3">
+        <span class="skeleton skeleton-title w-44"></span>
+        <span class="skeleton skeleton-line w-16"></span>
+      </div>
+      <div class="sk-cards flex gap-3.5 overflow-hidden">
+        {[0, 1, 2, 3, 4].map(() => (
+          <div class="w-[14.75rem] sm:w-64 shrink-0 rounded-[1.25rem] border-[1.5px] border-line overflow-hidden">
+            <span class="skeleton block aspect-[3/2] rounded-none"></span>
+            <span class="flex flex-col gap-2 px-3.5 pt-3 pb-3.5">
+              <span class="skeleton skeleton-title w-3/5"></span>
+              <span class="skeleton skeleton-line w-4/5"></span>
+              <span class="flex justify-between pt-3">
+                <span class="skeleton skeleton-line w-20"></span>
+                <span class="skeleton skeleton-line w-14"></span>
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+{
+  /* Restaurant: big cover photo with back button, name and details, section tabs, menu rows */
+  kind === 'vendor' && (
+    <div class="flex flex-col gap-4 sk-seq sk-flush">
+      <div class="relative">
+        <span class="skeleton block h-50 md:h-70 rounded-none md:rounded-[1.25rem] md:mx-auto md:max-w-[80rem]"></span>
+        <span class="absolute top-3 left-4 size-10 rounded-full bg-paper/70"></span>
+      </div>
+      <div class="container-app flex flex-col gap-2.5">
+        <span class="skeleton h-7 w-56 rounded-full"></span>
+        <span class="skeleton skeleton-line w-4/5"></span>
+        <span class="flex gap-3 pt-1">
+          <span class="skeleton h-6 w-16 rounded-full"></span>
+          <span class="skeleton h-6 w-24 rounded-full"></span>
+          <span class="skeleton h-6 w-20 rounded-full"></span>
+        </span>
+      </div>
+      <div class="container-app flex gap-2 overflow-hidden">
+        <span class="skeleton h-9 w-20 rounded-full shrink-0"></span>
+        <span class="skeleton h-9 w-24 rounded-full shrink-0"></span>
+        <span class="skeleton h-9 w-18 rounded-full shrink-0"></span>
+        <span class="skeleton h-9 w-22 rounded-full shrink-0"></span>
+      </div>
+      <div class="container-app flex flex-col gap-3">
+        <span class="skeleton skeleton-title w-28 mt-1"></span>
+        {[0, 1, 2].map(() => (
+          <div class="flex gap-3 py-2">
+            <span class="flex-1 flex flex-col gap-2 pt-1">
+              <span class="skeleton skeleton-title w-3/5"></span>
+              <span class="skeleton skeleton-line w-full"></span>
+              <span class="skeleton skeleton-line w-2/3"></span>
+              <span class="skeleton skeleton-line w-14 mt-1"></span>
+            </span>
+            <span class="skeleton size-26 rounded-2xl shrink-0"></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+{
+  /* Lists (orders, favourites, search, cart): title, then rows with a photo */
+  kind === 'list' && (
+    <div class="container-app flex flex-col gap-4 sk-seq">
+      <div class="flex items-center gap-3 h-11">
+        <span class="skeleton size-10 rounded-full shrink-0"></span>
+        <span class="skeleton skeleton-title w-36"></span>
+      </div>
+      <div class="flex gap-2 overflow-hidden">
+        <span class="skeleton h-9 w-20 rounded-full shrink-0"></span>
+        <span class="skeleton h-9 w-24 rounded-full shrink-0"></span>
+      </div>
+      {[0, 1, 2, 3].map(() => (
+        <div class="card p-3 flex gap-3 items-center">
+          <span class="skeleton size-16 rounded-xl shrink-0"></span>
+          <span class="flex-1 flex flex-col gap-2">
+            <span class="skeleton skeleton-title w-1/2"></span>
+            <span class="skeleton skeleton-line w-3/4"></span>
+            <span class="skeleton skeleton-line w-1/3"></span>
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+{
+  /* One order: status card with the big step, progress steps, rider card, items */
+  kind === 'order' && (
+    <div class="container-app flex flex-col gap-4 sk-seq">
+      <div class="flex items-center gap-3 h-11">
+        <span class="skeleton size-10 rounded-full shrink-0"></span>
+        <span class="flex flex-col gap-1.5">
+          <span class="skeleton skeleton-title w-32"></span>
+          <span class="skeleton skeleton-line w-16"></span>
+        </span>
+      </div>
+      <div class="card p-5 flex flex-col items-center gap-3">
+        <span class="skeleton size-16 rounded-full"></span>
+        <span class="skeleton h-6 w-48 rounded-full"></span>
+        <span class="skeleton skeleton-line w-56"></span>
+        <span class="skeleton h-14 w-40 rounded-xl mt-1"></span>
+      </div>
+      <div class="card p-4 flex flex-col gap-4">
+        {[0, 1, 2, 3].map(() => (
+          <span class="flex items-center gap-3">
+            <span class="skeleton size-7 rounded-full shrink-0"></span>
+            <span class="skeleton skeleton-line flex-1 max-w-48"></span>
+            <span class="skeleton skeleton-line w-10 ml-auto"></span>
+          </span>
+        ))}
+      </div>
+      <div class="card p-4 flex flex-col gap-2.5">
+        <span class="skeleton skeleton-title w-24"></span>
+        <span class="skeleton skeleton-line w-full"></span>
+        <span class="skeleton skeleton-line w-4/5"></span>
+      </div>
+    </div>
+  )
+}
+{
+  /* Account: profile card, then rows of settings */
+  kind === 'account' && (
+    <div class="container-app max-w-2xl flex flex-col gap-4 sk-seq">
+      <span class="skeleton h-7 w-32 rounded-full"></span>
+      <div class="card p-4 flex items-center gap-3">
+        <span class="skeleton size-14 rounded-full shrink-0"></span>
+        <span class="flex flex-col gap-2 flex-1">
+          <span class="skeleton skeleton-title w-40"></span>
+          <span class="skeleton skeleton-line w-28"></span>
+        </span>
+      </div>
+      <div class="card divide-y divide-line">
+        {[0, 1, 2, 3, 4].map(() => (
+          <span class="flex items-center gap-3 p-4">
+            <span class="skeleton size-9 rounded-xl shrink-0"></span>
+            <span class="flex flex-col gap-1.5 flex-1">
+              <span class="skeleton skeleton-title w-32"></span>
+              <span class="skeleton skeleton-line w-24"></span>
+            </span>
+            <span class="skeleton size-4 rounded-full"></span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+{
+  /* Checkout: delivery fields, payment choices, total bar */
+  kind === 'checkout' && (
+    <div class="container-app max-w-2xl flex flex-col gap-4 sk-seq">
+      <div class="flex items-center gap-3 h-11">
+        <span class="skeleton size-10 rounded-full shrink-0"></span>
+        <span class="skeleton skeleton-title w-28"></span>
+      </div>
+      <div class="card p-4 flex flex-col gap-3">
+        <span class="skeleton skeleton-title w-36"></span>
+        <span class="skeleton h-11 w-40 rounded-xl"></span>
+        <div class="grid grid-cols-2 gap-3">
+          <span class="skeleton h-12 rounded-xl"></span>
+          <span class="skeleton h-12 rounded-xl"></span>
+        </div>
+        <span class="skeleton h-12 rounded-xl"></span>
+      </div>
+      <div class="card p-4 flex flex-col gap-3">
+        <span class="skeleton skeleton-title w-32"></span>
+        {[0, 1, 2].map(() => (
+          <span class="flex items-center gap-3">
+            <span class="skeleton size-10 rounded-xl shrink-0"></span>
+            <span class="flex flex-col gap-1.5 flex-1">
+              <span class="skeleton skeleton-title w-28"></span>
+              <span class="skeleton skeleton-line w-3/4"></span>
+            </span>
+          </span>
+        ))}
+      </div>
+      <span class="skeleton h-14 rounded-xl"></span>
+    </div>
+  )
+}
+{
+  /* Forms (sign in, sign up, area): heading, a few fields, a button */
+  kind === 'form' && (
+    <div class="w-full max-w-md mx-auto px-5 flex flex-col gap-5 sk-seq">
+      <div class="flex items-center gap-3 h-10 mb-1">
+        <span class="skeleton size-10 rounded-full shrink-0"></span>
+        <span class="skeleton skeleton-title w-28"></span>
+      </div>
+      <span class="skeleton h-7 w-3/4 rounded-full"></span>
+      <span class="flex flex-col gap-2">
+        <span class="skeleton skeleton-line w-full"></span>
+        <span class="skeleton skeleton-line w-2/3"></span>
+      </span>
+      <div class="flex flex-col gap-2 pt-1">
+        <span class="skeleton skeleton-line w-24"></span>
+        <span class="skeleton h-12 rounded-xl"></span>
+      </div>
+      <div class="flex flex-col gap-2">
+        <span class="skeleton skeleton-line w-28"></span>
+        <span class="skeleton h-12 rounded-xl"></span>
+      </div>
+      <span class="skeleton h-13 rounded-xl mt-2"></span>
+    </div>
+  )
+}
+{
+  /* Reading pages (privacy, terms, help): heading and paragraphs */
+  kind === 'legal' && (
+    <div class="container-app max-w-3xl flex flex-col gap-4 sk-seq">
+      <div class="flex items-center gap-3 h-11">
+        <span class="skeleton size-10 rounded-full shrink-0"></span>
+        <span class="skeleton skeleton-title w-40"></span>
+      </div>
+      <span class="skeleton skeleton-line w-32"></span>
+      {[0, 1, 2].map(() => (
+        <div class="flex flex-col gap-2.5 pt-2">
+          <span class="skeleton skeleton-title w-48"></span>
+          <span class="skeleton skeleton-line w-full"></span>
+          <span class="skeleton skeleton-line w-full"></span>
+          <span class="skeleton skeleton-line w-11/12"></span>
+          <span class="skeleton skeleton-line w-3/5"></span>
+        </div>
+      ))}
+    </div>
+  )
+}
+{
+  /* Vendor, rider and admin panels: top bar, title, number tiles, tabs, order cards */
+  kind === 'panel' && (
+    <div class="w-full max-w-[96rem] px-4 sm:px-6 lg:px-8 flex flex-col gap-5 sk-seq">
+      <div class="flex items-center gap-3 h-10 lg:hidden">
+        <span class="skeleton size-8 rounded-full shrink-0"></span>
+        <span class="skeleton skeleton-title w-32"></span>
+        <span class="skeleton size-9 rounded-full ml-auto"></span>
+      </div>
+      <span class="skeleton h-7 w-44 rounded-full"></span>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <span class="skeleton h-20 rounded-[1rem]"></span>
+        <span class="skeleton h-20 rounded-[1rem]"></span>
+        <span class="skeleton h-20 rounded-[1rem] hidden lg:block"></span>
+        <span class="skeleton h-20 rounded-[1rem] hidden lg:block"></span>
+      </div>
+      <div class="flex gap-2 overflow-hidden">
+        <span class="skeleton h-9 w-20 rounded-full shrink-0"></span>
+        <span class="skeleton h-9 w-24 rounded-full shrink-0"></span>
+        <span class="skeleton h-9 w-20 rounded-full shrink-0"></span>
+      </div>
+      {[0, 1, 2].map(() => (
+        <div class="card p-4 flex flex-col gap-3">
+          <div class="flex items-center gap-3">
+            <span class="skeleton skeleton-title w-24"></span>
+            <span class="skeleton h-6 w-20 rounded-full ml-auto"></span>
+          </div>
+          <span class="skeleton skeleton-line w-4/5"></span>
+          <span class="skeleton skeleton-line w-3/5"></span>
+          <span class="skeleton h-11 rounded-xl"></span>
+        </div>
+      ))}
+    </div>
+  )
+}

@@ -1,0 +1,28 @@
+---
+// Top of a simple page: round back button and title, then a gold card
+// with an icon, a heading and a short line (Privacy, Terms, Help...).
+import Icon from './Icon.astro';
+
+interface Props {
+  title: string;
+  back: string;
+  /** An icon name from Icon.astro */
+  icon: string;
+  heading: string;
+  text?: string;
+}
+const { title, back, icon, heading, text } = Astro.props;
+---
+
+<div class="flex items-center gap-3">
+  <a href={back} data-back class="icon-btn icon-btn-round bg-fill border-0 -ml-1 shrink-0" aria-label="Back">
+    <Icon name="chevron-left" size={22} />
+  </a>
+  <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">{title}</h1>
+</div>
+<section class="notify-hero mt-6">
+  <span class="notify-hero-icon"><Icon name={icon as 'help'} size={28} /></span>
+  <h2 class="text-xl font-extrabold mt-4">{heading}</h2>
+  {text && <p class="text-[0.9375rem] mt-1 text-muted">{text}</p>}
+  <slot />
+</section>

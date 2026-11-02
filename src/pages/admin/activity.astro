@@ -1,0 +1,112 @@
+---
+// Everything that happens on Relax&Bite: sign-ins (and failed ones), orders,
+// vendor and rider actions, reports and admin changes.
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Icon from '../../components/Icon.astro';
+import { listActivity, securitySummary } from '../../data/store';
+import type { ActivityKind } from '../../data/types';
+import { dateTime } from '../../lib/format';
+
+const FILTERS: { key: string; label: string; kinds?: ActivityKind[] }[] = [
+  { key: 'all', label: 'Everything' },
+  { key: 'failed', label: 'Failed sign-ins', kinds: ['signin_failed', 'lockout'] },
+  { key: 'signins', label: 'Sign-ins', kinds: ['signin', 'signout'] },
+  { key: 'orders', label: 'Customer orders', kinds: ['order'] },
+  { key: 'partners', label: 'Vendors and riders', kinds: ['register', 'store', 'delivery'] },
+  { key: 'reports', label: 'Reports', kinds: ['report'] },
+  { key: 'admin', label: 'Admin changes', kinds: ['admin'] },
+];
+
+const view = FILTERS.find((f) => f.key === Astro.url.searchParams.get('view')) ?? FILTERS[0];
+const q = (Astro.url.searchParams.get('q') ?? '').slice(0, 60);
+const rows = await listActivity({ kinds: view.kinds, q, limit: 300 });
+const sec = await securitySummary(24);
+
+const KIND_LABEL: Record<ActivityKind, string> = {
+  signin: 'Signed in',
+  signin_failed: 'Failed sign-in',
+  lockout: 'Locked out',
+  signout: 'Signed out',
+  register: 'New application',
+  order: 'Order',
+  store: 'Vendor',
+  delivery: 'Rider',
+  report: 'Report',
+  admin: 'Admin',
+};
+const TONE = {
+  info: 'bg-fill text-ink-soft',
+  warning: 'bg-warning-soft text-warning-ink',
+  danger: 'bg-danger-soft text-danger',
+};
+const DOT = { info: 'bg-faint', warning: 'bg-star', danger: 'bg-danger' };
+---
+
+<PanelLayout title="Activity" refresh={30}>
+  <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Activity</h1>
+  <p class="text-sm text-muted mt-1">Every sign-in, failed attempt and action on Relax&amp;Bite, newest first. This page refreshes every 30 seconds.</p>
+
+  <dl class="mt-6 grid gap-3 grid-cols-1 sm:grid-cols-3">
+    <a href="/admin/activity?view=failed" class:list={['card p-4 sm:p-5 no-underline text-ink', sec.failed > 0 && 'border-star/40']}>
+      <dt class="text-sm font-semibold text-muted">Failed sign-ins, last 24 hours</dt>
+      <dd class:list={['text-2xl font-extrabold tabular mt-1', sec.failed > 0 && 'text-warning-ink']}>{sec.failed}</dd>
+    </a>
+    <a href="/admin/activity?view=failed" class:list={['card p-4 sm:p-5 no-underline text-ink', sec.lockouts > 0 && 'border-danger/40']}>
+      <dt class="text-sm font-semibold text-muted">Accounts locked</dt>
+      <dd class:list={['text-2xl font-extrabold tabular mt-1', sec.lockouts > 0 && 'text-danger']}>{sec.lockouts}</dd>
+    </a>
+    <a href="/admin/activity?view=failed&q=(admin)" class:list={['card p-4 sm:p-5 no-underline text-ink', sec.adminFailed > 0 && 'border-danger/40']}>
+      <dt class="text-sm font-semibold text-muted">Failed tries on admin accounts</dt>
+      <dd class:list={['text-2xl font-extrabold tabular mt-1', sec.adminFailed > 0 && 'text-danger']}>{sec.adminFailed}</dd>
+    </a>
+  </dl>
+
+  <div class="mt-6 flex flex-col gap-3">
+    <nav aria-label="Filter activity" class="edge-row flex gap-2 overflow-x-auto hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+      {
+        FILTERS.map((f) => (
+          <a href={`/admin/activity?view=${f.key}${q ? `&q=${encodeURIComponent(q)}` : ''}`} class="chip" aria-current={f.key === view.key ? 'true' : undefined}>
+            {f.label}
+          </a>
+        ))
+      }
+    </nav>
+    <form method="get" class="flex gap-2 max-w-xl">
+      <input type="hidden" name="view" value={view.key} />
+      <label for="activity-q" class="sr-only">Search activity</label>
+      <input id="activity-q" name="q" value={q} class="field-input" placeholder="Search a name, phone number, order or IP address" />
+      <button type="submit" class="btn btn-secondary">Search</button>
+    </form>
+  </div>
+
+  <section class="card mt-5 overflow-hidden" aria-label="Activity list">
+    {
+      rows.length === 0 ? (
+        <p class="p-6 text-sm text-muted">Nothing here yet.</p>
+      ) : (
+        <ul class="divide-y divide-line">
+          {rows.map((a) => (
+            <li class="px-4 sm:px-5 py-3.5 flex gap-3 items-start">
+              <span class:list={['size-2.5 rounded-full mt-1.5 shrink-0', DOT[a.severity]]} aria-hidden="true"></span>
+              <div class="flex-1 min-w-0 flex flex-col gap-1">
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span class="font-bold">{a.actor}</span>
+                  <span class:list={['badge h-5.5 text-[0.6875rem]', TONE[a.severity]]}>{KIND_LABEL[a.kind] ?? a.kind}</span>
+                </div>
+                <p class="text-sm text-ink-soft">{a.action}</p>
+                {(a.device || a.ip) && (
+                  <p class="text-xs text-muted flex flex-wrap gap-x-3">
+                    {a.device && <span>{a.device}</span>}
+                    {a.ip && <span class="tabular">IP {a.ip}</span>}
+                  </p>
+                )}
+              </div>
+              <time datetime={a.at} class="text-xs text-muted tabular whitespace-nowrap shrink-0 pt-0.5">{dateTime(a.at)}</time>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
+  {rows.length >= 300 && <p class="mt-3 text-sm text-muted flex items-center gap-2"><Icon name="info" size={16} /> Showing the latest 300. Search to find older entries.</p>}
+</PanelLayout>

@@ -1,0 +1,195 @@
+---
+import '../styles/global.css';
+import { SITE } from '../data/site';
+import { BAR_COLOUR } from '../lib/theme';
+import { getUser } from '../lib/session';
+import CartDrawer from '../components/overlays/CartDrawer.astro';
+import AuthModal from '../components/overlays/AuthModal.astro';
+import LocationModal from '../components/overlays/LocationModal.astro';
+import { ONBOARDING_GATE } from '../lib/onboarding';
+import { HEAD_GATE, skeletonFor, type SkeletonKind } from '../lib/skeleton';
+import { INTRO_GATE } from '../lib/intro';
+import { ORDER_GATE } from '../lib/reveal-order';
+import PageSkeleton from '../components/PageSkeleton.astro';
+
+interface Props {
+  title?: string;
+  description?: string;
+  /** Send first-time phone visitors to the welcome screens (home page only) */
+  onboardingGate?: boolean;
+  /** Leave out the sign-in, cart and location popups (welcome screens) */
+  bare?: boolean;
+  /** Which outline to show while the page refreshes (worked out from the address if left out) */
+  skeleton?: SkeletonKind;
+}
+
+const {
+  title,
+  onboardingGate = false,
+  bare = false,
+  skeleton,
+  description = `Order food from restaurants and chop bars in ${SITE.area}, delivered to your door.`,
+} = Astro.props;
+
+// The Android app adds its name to the browser's user agent (capacitor.config.ts)
+const inApp = (Astro.request.headers.get('user-agent') ?? '').includes(SITE.appUserAgent);
+// Guests are asked to sign in before ordering or saving favourites (lib/signin-gate.ts)
+const signedIn = Boolean(getUser(Astro.cookies));
+const skeletonKind: SkeletonKind = skeleton ?? skeletonFor(Astro.url.pathname);
+const pageTitle = title ? `${title} | ${SITE.name}` : `${SITE.name}: food delivery in Breman Asikuma`;
+---
+
+<!doctype html>
+<html lang="en" class:list={[inApp && 'in-app']} data-user={signedIn ? '1' : undefined}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content={BAR_COLOUR} />
+    <link rel="preload" href="/fonts/inter/inter-400.woff" as="font" type="font/woff" crossorigin />
+    <link rel="preload" href="/fonts/inter/inter-700.woff" as="font" type="font/woff" crossorigin />
+    <link rel="preload" href="/fonts/outfit/outfit-700.woff" as="font" type="font/woff" crossorigin />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="RelaxBite" />
+    <script is:inline>document.documentElement.classList.add('js');</script>
+    <script is:inline define:vars={{ appUa: SITE.appUserAgent }}>
+      // The Android app: its name in the user agent, or Capacitor's bridge (there from the start of the page)
+      if (navigator.userAgent.indexOf(appUa) !== -1 || window.androidBridge || window.Capacitor) document.documentElement.classList.add('in-app');
+      // Added to the home screen (iPhone web app, or installed from Chrome): behaves like the app
+      try {
+        if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) document.documentElement.classList.add('pwa');
+      } catch (e) {}
+    </script>
+    <script is:inline set:html={INTRO_GATE} />
+    <script is:inline set:html={HEAD_GATE} />
+    <script is:inline set:html={ORDER_GATE} />
+    {onboardingGate && <script is:inline set:html={ONBOARDING_GATE} />}
+    <title>{pageTitle}</title>
+  </head>
+  <body class="min-h-dvh antialiased">
+    <!-- Intro when the app opens (see lib/intro.ts): pure CSS, tap to skip.
+         The name rises into view, a bite is taken out of "Bite", the slogan
+         follows, then the orange lifts away like a cover. -->
+    <div id="intro" aria-hidden="true">
+      <div class="intro-stage">
+        <span class="intro-mark">
+          <svg viewBox="0 0 40 40" aria-hidden="true">
+            <rect width="40" height="40" rx="11" fill="#ef4444" />
+            <text x="19.2" y="26.4" text-anchor="middle" font-family="Outfit, Inter, system-ui, sans-serif" font-weight="800" font-size="14.5" letter-spacing="-0.6" fill="#fff">R<tspan fill="#3f292b">&amp;</tspan>B</text>
+            <g class="intro-teeth" fill="#fff">
+              <circle cx="29.4" cy="0.6" r="4.4" style="--t:0" />
+              <circle cx="36.6" cy="5.4" r="4.9" style="--t:1" />
+              <circle cx="40.5" cy="12.5" r="4.6" style="--t:2" />
+            </g>
+          </svg>
+        </span>
+        <p class="intro-line intro-name-line"><span class="intro-name"><span class="text-ink">Relax&amp;</span><span class="text-logo-orange">Bite</span></span></p>
+        <p class="intro-line intro-slogan-line"><span class="intro-slogan">{SITE.slogan}</span></p>
+      </div>
+    </div>
+    <!-- First in the page so it's drawn before anything else on a refresh -->
+    <PageSkeleton kind={skeletonKind} />
+    <slot />
+
+    {
+      !bare && (
+        <>
+          <CartDrawer />
+          <AuthModal />
+          <LocationModal />
+        </>
+      )
+    }
+
+    <dialog id="confirm-dialog" class="sheet max-w-[26rem]" aria-labelledby="confirm-title">
+      <div class="p-6 flex flex-col gap-4">
+        <div class="flex flex-col gap-2">
+          <h2 id="confirm-title" class="text-lg font-extrabold" data-confirm-title>Are you sure?</h2>
+          <p class="text-[0.9375rem] text-muted leading-relaxed" data-confirm-message></p>
+        </div>
+        <div class="flex gap-3">
+          <button type="button" class="btn btn-secondary flex-1" data-confirm-cancel>Cancel</button>
+          <button type="button" class="btn btn-primary flex-1" data-confirm-ok>Continue</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="nav-progress" aria-hidden="true"></div>
+
+    <!-- Pull to refresh: a bowl that draws itself in, with rising steam -->
+    <div id="ptr" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+        <circle class="ptr-arc" cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" pathLength="100" />
+      </svg>
+    </div>
+    <p id="ptr-status" class="sr-only" role="status" aria-live="polite"></p>
+    <!-- Photos the phone already has: show them at once instead of fading them in again (no blink between pages) -->
+    <script is:inline>
+      document.querySelectorAll('.img-frame > img').forEach(function (i) {
+        if (i.complete && i.naturalWidth) i.classList.add('is-loaded', 'is-instant');
+      });
+    </script>
+    <div id="global-toast" role="status" aria-live="polite" hidden class="fixed left-1/2 -translate-x-1/2 bottom-24 md:bottom-8 z-[60] w-max max-w-[calc(100%-2rem)] text-center bg-ink text-paper text-sm font-semibold px-4 py-3 rounded-xl shadow-lg"></div>
+
+    <script>
+      import { bindCartBadges } from '../lib/cart';
+      import { bindFavButtons } from '../lib/favourites';
+      import { bindConfirmForms } from '../lib/confirm';
+      import { bindOverlays } from '../lib/overlays';
+      import { bindSignInGate } from '../lib/signin-gate';
+      import { bindCustomSelects } from '../lib/custom-select';
+      import { bindInlineErrors } from '../lib/inline-errors';
+      import { bindStagger } from '../lib/stagger';
+      import { bindRevealOrder } from '../lib/reveal-order';
+      import { bindPhoneInputs } from '../lib/phone-input';
+      import { bindBackButtons } from '../lib/back';
+      import { bindLoadingStates } from '../lib/loading';
+      import { bindPullToRefresh } from '../lib/pull-refresh';
+      import { bindSkeleton } from '../lib/skeleton';
+      import { bindIntro } from '../lib/intro';
+      import { bindDragScroll } from '../lib/drag-scroll';
+      import { rememberPromoFromLink } from '../lib/promo';
+      import { bindPasswordEyes } from '../lib/password-eye';
+      bindIntro();
+      bindPasswordEyes();
+      bindDragScroll();
+      import { bindPageTransitions } from '../lib/page-transitions';
+      bindPageTransitions();
+      bindSkeleton();
+      bindBackButtons();
+      bindLoadingStates();
+      bindPullToRefresh();
+      bindCartBadges();
+      bindPhoneInputs();
+
+      const toast = document.getElementById('global-toast')!;
+      let toastTimer = 0;
+      const showToast = (message: string) => {
+        toast.textContent = message;
+        toast.classList.remove('toast-out');
+        toast.hidden = false;
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => {
+          toast.classList.add('toast-out');
+          toastTimer = window.setTimeout(() => (toast.hidden = true), 520);
+        }, 2600);
+      };
+      bindFavButtons((saved, name) => showToast(saved ? `${name} saved to favourites` : `${name} removed from favourites`));
+      // A promoter's link (?promo=KOFI10): keep the code for checkout
+      const promo = rememberPromoFromLink();
+      if (promo) showToast(`Promo code ${promo} saved. It's applied at checkout on your first order.`);
+      bindConfirmForms();
+      bindSignInGate();
+      bindCustomSelects();
+      bindInlineErrors();
+      bindStagger();
+      bindRevealOrder();
+      bindOverlays();
+    </script>
+  </body>
+</html>

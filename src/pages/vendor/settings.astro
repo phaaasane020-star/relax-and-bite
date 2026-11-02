@@ -1,0 +1,160 @@
+---
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Alert from '../../components/panel/Alert.astro';
+import Icon from '../../components/Icon.astro';
+import FoodImage from '../../components/FoodImage.astro';
+import LocalityPicker from '../../components/LocalityPicker.astro';
+import FoodTypePicker from '../../components/FoodTypePicker.astro';
+import { foodTypesFromForm } from '../../data/catalog';
+import { audit, getVendorById, getZones, updateVendorSettings } from '../../data/store';
+import { clientInfo } from '../../lib/client-info';
+import { field, flash, num, takeFlash } from '../../lib/actions';
+import { prettyPhone } from '../../lib/format';
+
+const account = Astro.locals.partner!;
+const vendorId = account.vendor_id!;
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  try {
+    const cover = String(form.get('cover_data') ?? '');
+    if (cover && (!cover.startsWith('data:image/') || cover.length > 1_500_000)) throw new Error('Use a JPG or PNG photo under 1 MB.');
+    await updateVendorSettings(vendorId, {
+      name: field(form, 'name', 80),
+      description: field(form, 'description', 120),
+      cuisine_tags: foodTypesFromForm(form),
+      phone: field(form, 'phone', 20),
+      address: field(form, 'address', 120),
+      zone_id: num(form, 'zone_id'),
+      locality_id: num(form, 'locality_id') || null,
+      opens_at: field(form, 'opens_at', 5),
+      closes_at: field(form, 'closes_at', 5),
+      prep_time_min: num(form, 'prep_time_min'),
+      prep_time_max: num(form, 'prep_time_max'),
+      min_order: num(form, 'min_order'),
+      delivery_fee: num(form, 'delivery_fee'),
+      cover_url: cover ? cover : undefined,
+    });
+    flash(Astro.cookies, 'Store settings saved.');
+    await audit(`${account.full_name} (vendor)`, 'Changed store settings', { kind: 'store', ...clientInfo(Astro) });
+    return Astro.redirect('/vendor/settings', 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Could not save. Try again.';
+  }
+}
+
+const vendor = (await getVendorById(vendorId))!;
+const zones = await getZones();
+const success = takeFlash(Astro.cookies);
+---
+
+<PanelLayout title="Store settings">
+  <Alert error={error} success={success} />
+
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Store settings</h1>
+      <p class="text-sm text-muted mt-1">What customers see on your page.</p>
+    </div>
+    <a href={`/vendors/${vendor.slug}`} target="_blank" rel="noopener" class="btn btn-secondary w-full sm:w-auto">View my store page</a>
+  </div>
+
+  <form method="post" class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] items-start" novalidate>
+    <input type="hidden" name="cover_data" />
+    <div class="flex flex-col gap-6">
+      <section class="card p-5 md:p-6 flex flex-col gap-4" aria-labelledby="profile-h">
+        <h2 id="profile-h" class="text-lg font-extrabold">Store profile</h2>
+        <div class="grid gap-4 md:grid-cols-2">
+          <div>
+            <label for="name" class="field-label">Store name</label>
+            <input id="name" name="name" class="field-input" value={vendor.name} required />
+          </div>
+          <div>
+            <label for="phone" class="field-label">Store phone</label>
+            <input id="phone" name="phone" type="tel" class="field-input" value={prettyPhone(vendor.phone)} required />
+          </div>
+        </div>
+        <div>
+          <label for="description" class="field-label">Short description</label>
+          <input id="description" name="description" class="field-input" value={vendor.description} maxlength="120" />
+        </div>
+        <FoodTypePicker selected={vendor.cuisine_tags} idPrefix="store" />
+        <LocalityPicker zones={zones} zoneId={vendor.zone_id} localityId={vendor.locality_id} idPrefix="store" />
+        <div>
+          <label for="address" class="field-label">Landmark <span class="text-muted font-medium">(optional)</span></label>
+          <input id="address" name="address" class="field-input" value={vendor.address} />
+        </div>
+      </section>
+
+      <section id="hours" class="card p-5 md:p-6 flex flex-col gap-4 scroll-mt-6" aria-labelledby="ops-h">
+        <h2 id="ops-h" class="text-lg font-extrabold">Hours and orders</h2>
+        <div class="grid gap-4 grid-cols-2 md:grid-cols-4">
+          <div>
+            <label for="opens_at" class="field-label">Opens at</label>
+            <input id="opens_at" name="opens_at" type="time" class="field-input" value={vendor.opens_at ?? ''} required data-required-message="Add the time you open." />
+          </div>
+          <div>
+            <label for="closes_at" class="field-label">Closes at</label>
+            <input id="closes_at" name="closes_at" type="time" class="field-input" value={vendor.closes_at ?? ''} required data-required-message="Add the time you close." />
+          </div>
+          <div>
+            <label for="prep_time_min" class="field-label">Cooking takes at least (minutes)</label>
+            <input id="prep_time_min" name="prep_time_min" type="number" min="5" class="field-input tabular" value={vendor.prep_time_min} />
+          </div>
+          <div>
+            <label for="prep_time_max" class="field-label">And at most (minutes)</label>
+            <input id="prep_time_max" name="prep_time_max" type="number" min="5" class="field-input tabular" value={vendor.prep_time_max} />
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="delivery_fee" class="field-label">Delivery fee (GH₵)</label>
+            <input id="delivery_fee" name="delivery_fee" type="number" min="0" max="100" step="0.5" class="field-input tabular" value={vendor.delivery_fee} required />
+            <p class="field-hint">What customers pay for delivery. The rider earns all of it.</p>
+          </div>
+          <div>
+            <label for="min_order" class="field-label">Minimum order (GH₵)</label>
+            <input id="min_order" name="min_order" type="number" min="0" step="1" class="field-input tabular" value={vendor.min_order} />
+            <p class="field-hint">The smallest order you accept. Put 0 if any amount is fine.</p>
+          </div>
+        </div>
+        <p class="text-sm text-muted">Open or close your store any time from the Orders page.</p>
+      </section>
+    </div>
+
+    <aside class="card p-5 md:p-6 flex flex-col gap-4 xl:sticky xl:top-8">
+      <h2 class="font-extrabold">Cover photo</h2>
+      <div class="aspect-[16/9] rounded-xl overflow-hidden bg-fill">
+        <img data-cover-preview src={vendor.cover_url ?? ''} alt="" class="size-full object-cover" hidden={!vendor.cover_url} />
+        {!vendor.cover_url && <FoodImage src={null} alt="" class="size-full" />}
+      </div>
+      <label class="btn btn-secondary cursor-pointer">
+        <input type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" data-cover-input />
+        <Icon name="edit" size={18} /> Change cover photo
+      </label>
+      <p class="text-xs text-muted">Shown at the top of your page and on the home screen. Wide photos of your best dish work well.</p>
+      <button type="submit" class="btn btn-primary btn-lg w-full mt-2">Save changes</button>
+    </aside>
+  </form>
+</PanelLayout>
+
+<script>
+  const input = document.querySelector<HTMLInputElement>('[data-cover-input]')!;
+  const preview = document.querySelector<HTMLImageElement>('[data-cover-preview]')!;
+  const hidden = document.querySelector<HTMLInputElement>('input[name="cover_data"]')!;
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1200 / bitmap.width);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    hidden.value = canvas.toDataURL('image/jpeg', 0.8);
+    preview.src = hidden.value;
+    preview.hidden = false;
+    preview.nextElementSibling?.remove();
+  });
+</script>

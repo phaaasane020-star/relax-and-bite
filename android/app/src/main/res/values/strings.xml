@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <!-- The name under the app icon on the phone (kept short so it isn't cut off) -->
+    <string name="app_name">RelaxBite</string>
+    <string name="title_activity_main">RelaxBite</string>
+    <string name="package_name">com.relaxandbite.app</string>
+    <string name="custom_url_scheme">com.relaxandbite.app</string>
+</resources>

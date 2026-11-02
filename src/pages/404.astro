@@ -1,0 +1,15 @@
+---
+import BackButton from '../components/BackButton.astro';
+import AppLayout from '../layouts/AppLayout.astro';
+import Icon from '../components/Icon.astro';
+---
+
+<AppLayout title="Page not found">
+  <div class="container-app pt-6 pb-16 md:pt-8 md:pb-24">
+    <BackButton href="/" class="mb-10" />
+    <Icon name="dish" size={44} strokeWidth={1.5} class="text-faint" />
+    <h1 class="text-2xl font-extrabold mt-4">We couldn't find that page</h1>
+    <p class="text-muted mt-2">The link may be old, or the restaurant may have moved.</p>
+    <a href="/" class="btn btn-primary mt-6">Go to home</a>
+  </div>
+</AppLayout>

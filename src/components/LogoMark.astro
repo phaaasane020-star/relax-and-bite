@@ -1,0 +1,26 @@
+---
+// The Relax&Bite mark: a red rounded square with "R&B" in white and a bite
+// taken out of its top-right corner. Same design as the app icon.
+interface Props {
+  size?: number;
+  class?: string;
+}
+const { size = 32, class: className } = Astro.props;
+const id = `rbm-${Math.random().toString(36).slice(2, 8)}`;
+// Small marks: all white and a touch bigger, so "R&B" stays readable
+const small = size < 44;
+---
+
+<svg width={size} height={size} viewBox="0 0 40 40" class={className} aria-hidden="true" focusable="false">
+  <defs>
+    <mask id={id}>
+      <rect width="40" height="40" rx="11" fill="#fff" />
+      <!-- the bite: three round tooth marks over the corner -->
+      <circle cx="40.5" cy="12.5" r="4.6" fill="#000" />
+      <circle cx="36.6" cy="5.4" r="4.9" fill="#000" />
+      <circle cx="29.4" cy="0.6" r="4.4" fill="#000" />
+    </mask>
+  </defs>
+  <rect width="40" height="40" rx="11" fill="#ef4444" mask={`url(#${id})`} />
+  <text x="19.2" y={small ? 26.9 : 26.4} text-anchor="middle" font-family="Outfit, Inter, system-ui, sans-serif" font-weight="800" font-size={small ? 16 : 14.5} letter-spacing={small ? -0.9 : -0.6} fill="#fff">R<tspan fill={small ? '#fff' : '#3f292b'}>&amp;</tspan>B</text>
+</svg>

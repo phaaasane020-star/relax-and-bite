@@ -1,0 +1,41 @@
+---
+// Phone navigation bar. Hidden on tablet and desktop.
+import Icon from './Icon.astro';
+
+const path = Astro.url.pathname;
+
+const items = [
+  { href: '/', label: 'Home', icon: 'home', active: path === '/', open: undefined },
+  { href: '/search', label: 'Search', icon: 'search', active: path.startsWith('/search'), open: undefined },
+  { href: '/orders', label: 'Orders', icon: 'receipt', active: path.startsWith('/orders'), open: undefined },
+  {
+    href: '/account',
+    label: 'Account',
+    icon: 'user',
+    active: path.startsWith('/account') || path.startsWith('/login'),
+    open: undefined,
+  },
+] as const;
+---
+
+<nav
+  aria-label="Main"
+  class="vt-tabbar md:hidden fixed inset-x-0 bottom-0 z-30 bg-surface border-t border-line grid grid-cols-4 pb-[var(--sab)]"
+>
+  {
+    items.map((item) => (
+      <a
+        href={item.href}
+        data-open={item.open}
+        aria-current={item.active ? 'page' : undefined}
+        class:list={[
+          'h-16 flex flex-col items-center justify-center gap-1 text-[0.6875rem] min-[380px]:text-xs no-underline',
+          item.active ? 'text-brand font-bold' : 'text-muted font-semibold',
+        ]}
+      >
+        <span class="nav-pill"><Icon name={item.icon} size={24} /></span>
+        {item.label}
+      </a>
+    ))
+  }
+</nav>

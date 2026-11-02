@@ -1,0 +1,82 @@
+---
+// One support chat: read it, reply, or close it.
+import PanelLayout from '../../../layouts/PanelLayout.astro';
+import Alert from '../../../components/panel/Alert.astro';
+import Icon from '../../../components/Icon.astro';
+import { closeSupportChat, getChatForStaff, staffReply } from '../../../data/support';
+import { audit } from '../../../data/store';
+import { field, flash, takeFlash } from '../../../lib/actions';
+import { clientInfo } from '../../../lib/client-info';
+import { clock, dateTime, prettyPhone } from '../../../lib/format';
+
+const me = Astro.locals.partner!;
+const id = Astro.params.id ?? '';
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = field(form, 'action');
+  try {
+    if (action === 'reply') {
+      await staffReply(id, me.full_name, field(form, 'body', 1000));
+    } else if (action === 'close') {
+      await closeSupportChat(id, me.full_name);
+      await audit(`${me.full_name} (admin)`, 'Closed a support chat', { kind: 'admin', ...clientInfo(Astro) });
+      flash(Astro.cookies, 'Chat closed. The customer can start a new one any time.');
+    }
+    return Astro.redirect(`/admin/support/${id}`, 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const found = await getChatForStaff(id);
+if (!found) return Astro.rewrite('/404');
+const { chat, messages } = found;
+const success = takeFlash(Astro.cookies);
+---
+
+<PanelLayout title="Support chat" refresh={chat.status === 'open' ? 20 : 0}>
+  <div class="max-w-3xl">
+    <a href="/admin/support" class="back-link mb-3" aria-label="All chats"><Icon name="chevron-left" size={22} strokeWidth={2.2} /></a>
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-extrabold tracking-tight">{chat.customer_name || 'Customer'}</h1>
+        <p class="text-sm text-muted">
+          {chat.customer_email}{chat.customer_phone ? ` · ${prettyPhone(chat.customer_phone)}` : ''} · {chat.topic ?? 'Help'}
+          {chat.order_code && <> · <strong class="tabular">{chat.order_code}</strong></>}
+        </p>
+      </div>
+      {chat.status !== 'closed' && (
+        <form method="post" data-confirm="Close this chat?" data-confirm-message="The customer will see it's closed and can start a new one." data-confirm-label="Close chat">
+          <input type="hidden" name="action" value="close" />
+          <button type="submit" class="btn btn-secondary">Close chat</button>
+        </form>
+      )}
+    </div>
+
+    <div class="mt-4"><Alert error={error} success={success} /></div>
+
+    <div class="card p-4 sm:p-5 flex flex-col gap-3">
+      {messages.map((m) => (
+        <div class:list={['chat-msg !animate-none', m.sender === 'customer' ? 'chat-msg-staff !self-start' : m.sender === 'staff' ? 'chat-msg-me !self-end' : 'chat-msg-bot']}>
+          <p class="chat-who !text-inherit opacity-80">{m.sender === 'customer' ? chat.customer_name || 'Customer' : m.sender === 'staff' ? `${m.author} (team)` : m.author || 'Assistant'}</p>
+          <p class="whitespace-pre-line">{m.body}</p>
+          <p class="chat-time">{clock(m.created_at)}, {dateTime(m.created_at).split(',')[0]}</p>
+        </div>
+      ))}
+    </div>
+
+    {
+      chat.status !== 'closed' ? (
+        <form method="post" class="mt-4 flex items-end gap-2">
+          <input type="hidden" name="action" value="reply" />
+          <textarea name="body" rows="2" maxlength="1000" required class="field-input flex-1 min-w-0 !rounded-[1.25rem]" placeholder="Write a reply. The customer gets a notification."></textarea>
+          <button type="submit" class="chat-send" aria-label="Send reply"><Icon name="send" size={20} /></button>
+        </form>
+      ) : (
+        <p class="text-sm text-muted mt-4">Closed{chat.closed_by ? ` by ${chat.closed_by}` : ''}.</p>
+      )
+    }
+  </div>
+</PanelLayout>

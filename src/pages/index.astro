@@ -1,0 +1,125 @@
+---
+import AppLayout from '../layouts/AppLayout.astro';
+import VendorCard from '../components/VendorCard.astro';
+import DishCard from '../components/DishCard.astro';
+import Icon from '../components/Icon.astro';
+import { getFoodCategories, getHomeDishes, getVendors, getZone, getZones, type HomeDish } from '../data/store';
+import { getLocation, getUser } from '../lib/session';
+
+const loc = getLocation(Astro.cookies);
+const signedIn = !!getUser(Astro.cookies);
+// Fetched together rather than one after another
+const [vendors, zones, zone, dishes] = await Promise.all([
+  getVendors(), // open first, then by rating
+  getZones(),
+  loc ? getZone(loc.zoneId) : Promise.resolve(undefined),
+  loc ? getHomeDishes(loc.zoneId) : Promise.resolve([] as HomeDish[]),
+]);
+
+// With a town chosen: only its restaurants (they deliver in their own town).
+// Without one: every town, so people can see what's on offer.
+const here = zone ? vendors.filter((v) => v.zone_id === zone.id) : [];
+const openHere = here.filter((v) => v.is_open);
+const laterHere = here.filter((v) => !v.is_open);
+
+// Rows of dishes: the most ordered, then one row per food type (Fufu, Banku...).
+// A dish belongs to a food type when its name or menu section mentions it.
+const stem = (w: string) => w.toLowerCase().replace(/s$/, '');
+const mentions = (d: HomeDish, word: string) => `${d.name} ${d.section}`.toLowerCase().includes(stem(word));
+const mostOrdered = dishes
+  .filter((d) => d.sold > 0)
+  .sort((a, b) => Number(b.vendor_open) - Number(a.vendor_open) || b.sold - a.sold)
+  .slice(0, 12);
+const typeRows = getFoodCategories()
+  .map((c) => ({ id: `type-${stem(c).replace(/\W+/g, '-')}`, title: c, dishes: dishes.filter((d) => mentions(d, c)).slice(0, 12) }))
+  .filter((r) => r.dishes.length > 0);
+
+type Row = { id: string; title: string; note: string } & ({ kind: 'vendors'; vendors: typeof here } | { kind: 'dishes'; dishes: HomeDish[] });
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const rows: Row[] = [
+  { id: 'most', title: 'Most ordered', kind: 'dishes' as const, dishes: mostOrdered, note: '' },
+  { id: 'open', title: 'Open now', kind: 'vendors' as const, vendors: openHere, note: count(openHere.length, 'place', 'places') },
+  ...typeRows.map((r) => ({ ...r, kind: 'dishes' as const, note: count(r.dishes.length, 'dish', 'dishes') })),
+  { id: 'later', title: 'Opening later', kind: 'vendors' as const, vendors: laterHere, note: count(laterHere.length, 'place', 'places') },
+].filter((r) => (r.kind === 'vendors' ? r.vendors.length : r.dishes.length) > 0);
+// Cards in a row that scrolls sideways
+const ROW = 'edge-row flex gap-3.5 overflow-x-auto hide-scrollbar snap-x snap-mandatory -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pb-2';
+const CARD = 'w-[14.75rem] sm:w-64 shrink-0 snap-start';
+const DISH = 'w-[11.5rem] sm:w-52 shrink-0 snap-start';
+const byTown = zones
+  .map((z) => ({ town: z, vendors: vendors.filter((v) => v.zone_id === z.id) }))
+  .filter((t) => t.vendors.length > 0);
+---
+
+<AppLayout onboardingGate={!signedIn} mobileHeader="full">
+  {
+    zone ? (
+      <>
+        <h1 class="sr-only">Restaurants in {zone.name}</h1>
+        {here.length === 0 ? (
+          <div class="container-app pt-6">
+            <div class="card p-8">
+              <p class="font-bold">No restaurants in {zone.name} yet</p>
+              <p class="text-sm text-muted mt-1">We're signing up restaurants here now. Check back soon, or choose another town.</p>
+              <a href="/location?next=/" data-open="location" class="btn btn-secondary mt-4">Change town</a>
+            </div>
+          </div>
+        ) : (
+          rows.map((r) => (
+            <section class="pt-6 first-of-type:pt-4" aria-labelledby={`row-${r.id}`}>
+              <div class="container-app flex items-center justify-between gap-3 mb-3">
+                <h2 id={`row-${r.id}`} class="section-title text-xl font-extrabold tracking-tight">{r.title}</h2>
+                {r.note && <span class="text-sm text-muted">{r.note}</span>}
+              </div>
+              <div class="container-app">
+                <div class={ROW}>
+                  {r.kind === 'vendors'
+                    ? r.vendors.map((v, i) => <VendorCard vendor={v} index={i} class={CARD} />)
+                    : r.dishes.map((d, i) => <DishCard dish={d} index={i} class={DISH} />)}
+                </div>
+              </div>
+            </section>
+          ))
+        )}
+      </>
+    ) : (
+      <>
+        <div class="container-app pt-4">
+          <a href="/location?next=/" data-open="location" class="card flex items-center gap-3 p-4 no-underline text-ink hover:border-line-strong">
+            <span class="size-10 rounded-full bg-brand-soft text-brand flex items-center justify-center shrink-0">
+              <Icon name="pin" size={20} />
+            </span>
+            <span class="flex flex-col flex-1 min-w-0">
+              <span class="font-bold">Where should we deliver?</span>
+              <span class="text-sm text-muted">Choose your town to see its restaurants and delivery fee.</span>
+            </span>
+            <Icon name="chevron-right" size={20} class="text-muted" />
+          </a>
+        </div>
+        {byTown.map((t) => (
+          <section class="pt-6" aria-labelledby={`town-${t.town.id}`}>
+            <div class="container-app flex items-center justify-between gap-3 mb-3">
+              <h2 id={`town-${t.town.id}`} class="section-title text-xl font-extrabold tracking-tight">{t.town.name}</h2>
+              <span class="text-sm text-muted">{t.vendors.filter((v) => v.is_open).length} open now</span>
+            </div>
+            <div class="container-app">
+              <div class={ROW}>
+                {t.vendors.map((v, i) => (
+                  <VendorCard vendor={v} index={i} class={CARD} />
+                ))}
+              </div>
+            </div>
+          </section>
+        ))}
+        {vendors.length === 0 && (
+          <div class="container-app pt-6">
+            <div class="card p-8">
+              <p class="font-bold">Restaurants are joining soon</p>
+              <p class="text-sm text-muted mt-1">Check back shortly.</p>
+            </div>
+          </div>
+        )}
+      </>
+    )
+  }
+</AppLayout>

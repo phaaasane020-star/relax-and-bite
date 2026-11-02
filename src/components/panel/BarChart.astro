@@ -1,0 +1,93 @@
+---
+// Single-series bar chart: one colour, hover/focus label on every bar,
+// and a "Show as table" view for screen readers and exact numbers.
+import type { Bar } from '../../data/insights';
+
+interface Props {
+  title: string;
+  bars: Bar[];
+  format?: 'money' | 'count';
+  valueLabel?: string;
+  height?: number;
+}
+const { title, bars, format = 'money', valueLabel = 'Value', height = 200 } = Astro.props;
+
+const max = Math.max(0, ...bars.map((b) => b.value));
+// A tidy top value for the scale
+const step = max <= 10 ? 2 : max <= 50 ? 10 : max <= 200 ? 50 : max <= 1000 ? 200 : 1000;
+const top = Math.max(step, Math.ceil(max / step) * step);
+const fmt = (v: number) => (format === 'money' ? `GH₵ ${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : String(v));
+// Show at most ~8 x-axis labels
+const every = Math.max(1, Math.ceil(bars.length / 8));
+const total = bars.reduce((s, b) => s + b.value, 0);
+---
+
+<figure class="flex flex-col gap-3">
+  <figcaption class="sr-only">{title}</figcaption>
+  <div class="flex gap-2">
+    <!-- y-axis -->
+    <div class="flex flex-col justify-between text-[0.6875rem] text-muted tabular text-right shrink-0 w-14" style={`height:${height / 16}rem`} aria-hidden="true">
+      <span>{fmt(top)}</span>
+      <span>{fmt(top / 2)}</span>
+      <span>0</span>
+    </div>
+    <div class="flex-1 min-w-0">
+      <div class="relative" style={`height:${height / 16}rem`}>
+        <!-- recessive grid -->
+        <div class="absolute inset-x-0 top-0 border-t border-dashed border-line" aria-hidden="true"></div>
+        <div class="absolute inset-x-0 top-1/2 border-t border-dashed border-line" aria-hidden="true"></div>
+        <div class="absolute inset-x-0 bottom-0 border-t border-line-strong" aria-hidden="true"></div>
+        <div class="absolute inset-0 flex items-end gap-[2px]">
+          {
+            bars.map((b, i) => {
+              const pct = top ? (b.value / top) * 100 : 0;
+              // Keep the label inside the card near the edges
+              const tipPos = i < bars.length / 3 ? 'left-0' : i >= (bars.length * 2) / 3 ? 'right-0' : 'left-1/2 -translate-x-1/2';
+              return (
+                <div class="group relative flex-1 h-full flex items-end justify-center outline-none" tabindex="0" aria-label={b.tip}>
+                  <div
+                    class:list={[
+                      'w-full max-w-10 rounded-t-[4px] transition-colors',
+                      b.value > 0 ? 'bg-brand group-hover:bg-brand-dark group-focus:bg-brand-dark' : 'bg-line h-[2px]',
+                    ]}
+                    style={b.value > 0 ? `height:${Math.max(pct, 1.5)}%` : undefined}
+                  ></div>
+                  <div class:list={['pointer-events-none absolute bottom-full mb-2 z-10 hidden group-hover:block group-focus:block', tipPos]}>
+                  <div class="pointer-events-none w-max max-w-[11rem] rounded-lg bg-ink text-paper text-xs font-semibold px-2.5 py-1.5">
+                    {b.tip}
+                  </div>
+                  </div>
+                </div>
+              );
+            })
+          }
+        </div>
+      </div>
+      <!-- x-axis -->
+      <div class="flex gap-[2px] mt-1.5" aria-hidden="true">
+        {
+          bars.map((b, i) => (
+            <span class:list={['flex-1 text-[0.6875rem] text-muted text-center whitespace-nowrap overflow-visible', i % (every * 2) !== 0 && 'hidden sm:inline']}>
+              {i % every === 0 ? b.label.split(' ').slice(0, 2).join(' ') : ''}
+            </span>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+
+  <details class="text-sm">
+    <summary class="text-brand font-semibold w-fit">Show as table</summary>
+    <div class="mt-2 max-h-64 overflow-y-auto border border-line rounded-lg">
+      <table class="w-full">
+        <thead class="bg-paper text-muted text-left">
+          <tr><th class="px-3 py-2 font-semibold">Period</th><th class="px-3 py-2 font-semibold text-right">{valueLabel}</th></tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          {bars.map((b) => <tr><td class="px-3 py-1.5">{b.label}</td><td class="px-3 py-1.5 text-right tabular">{fmt(b.value)}</td></tr>)}
+          <tr class="font-bold"><td class="px-3 py-1.5">Total</td><td class="px-3 py-1.5 text-right tabular">{fmt(total)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+</figure>

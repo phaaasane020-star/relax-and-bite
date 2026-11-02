@@ -1,0 +1,25 @@
+---
+// Round back button with the page title beside it.
+import Icon from './Icon.astro';
+
+interface Props {
+  title: string;
+  subtitle?: string;
+  back?: string;
+  backLabel?: string;
+}
+const { title, subtitle, back = '/', backLabel = 'Back' } = Astro.props;
+---
+
+<div class="bg-paper pt-[var(--sat)]">
+  <div class="container-app pt-3 md:pt-6 pb-1 flex items-center gap-3">
+    <a href={back} data-back class="back-link" aria-label={backLabel}>
+      <Icon name="chevron-left" size={22} strokeWidth={2.2} />
+    </a>
+    <div class="flex flex-col min-w-0 flex-1">
+      <h1 class="text-2xl md:text-3xl font-extrabold truncate tracking-tight">{title}</h1>
+      {subtitle && <span class="text-sm text-muted truncate">{subtitle}</span>}
+    </div>
+    <slot name="right" />
+  </div>
+</div>

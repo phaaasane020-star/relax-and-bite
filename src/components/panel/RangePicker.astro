@@ -1,0 +1,13 @@
+---
+import { RANGES, type Range } from '../../data/insights';
+
+interface Props {
+  current: Range;
+}
+const { current } = Astro.props;
+const path = Astro.url.pathname;
+---
+
+<nav aria-label="Time period" class="flex gap-2 overflow-x-auto hide-scrollbar">
+  {RANGES.map((r) => <a href={`${path}?range=${r.key}`} class="chip" aria-current={r.key === current ? 'true' : undefined}>{r.label}</a>)}
+</nav>

@@ -1,0 +1,125 @@
+---
+import { clientInfo } from '../../lib/client-info';
+import PanelLayout from '../../layouts/PanelLayout.astro';
+import Alert from '../../components/panel/Alert.astro';
+import PartnerTabs from '../../components/panel/PartnerTabs.astro';
+import ReasonDialog from '../../components/panel/ReasonDialog.astro';
+import { audit, deliveredCounts, getAllZones, getOrders } from '../../data/store';
+import { listRiders, setAccountStatus } from '../../data/partners';
+import { field, flash, takeFlash } from '../../lib/actions';
+import { prettyPhone } from '../../lib/format';
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = field(form, 'action');
+  const name = field(form, 'name');
+  try {
+    if (action === 'suspend') {
+      await setAccountStatus(field(form, 'id'), 'suspended', field(form, 'reason'));
+      flash(Astro.cookies, `${name} is suspended.`);
+    } else if (action === 'reactivate') {
+      await setAccountStatus(field(form, 'id'), 'approved');
+      flash(Astro.cookies, `${name} is active again.`);
+    }
+    await audit(`${Astro.locals.partner!.full_name} (admin)`, `${action === 'suspend' ? 'Suspended' : 'Reactivated'} ${name}${action === 'suspend' ? `: ${field(form, 'reason')}` : ''}`, clientInfo(Astro));
+    return Astro.redirect('/admin/riders', 303);
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Something went wrong. Try again.';
+  }
+}
+
+const riders = await listRiders();
+const zones = await getAllZones();
+const delivered = await deliveredCounts('rider');
+const active = await getOrders({ status: 'active' });
+const success = takeFlash(Astro.cookies);
+const badge: Record<string, string> = {
+  pending: 'bg-warning-soft text-warning-ink',
+  approved: 'bg-success-soft text-success',
+  suspended: 'bg-danger-soft text-danger',
+  rejected: 'bg-fill text-ink-soft',
+};
+---
+
+<PanelLayout title="Riders">
+  <Alert error={error} success={success} />
+  <PartnerTabs />
+  <p class="text-sm text-muted mt-4">{riders.filter((r) => r.is_online).length} online now</p>
+
+  <section class="card mt-6 overflow-hidden" aria-label="Riders">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm rtable">
+        <thead class="bg-paper text-left text-muted">
+          <tr>
+            <th class="px-5 py-3 font-semibold">Rider</th>
+            <th class="px-5 py-3 font-semibold">Area</th>
+            <th class="px-5 py-3 font-semibold">Vehicle</th>
+            <th class="px-5 py-3 font-semibold">Now</th>
+            <th class="px-5 py-3 font-semibold">Delivered</th>
+            <th class="px-5 py-3 font-semibold">Status</th>
+            <th class="px-5 py-3 font-semibold"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          {
+            riders.map((r) => {
+              const carrying = active.filter((o) => o.rider_id === r.id).length;
+              return (
+                <tr>
+                  <td class="px-5 py-3 whitespace-nowrap">
+                    <span class="flex items-center gap-3">
+                      {r.photo_url ? (
+                        <img src={r.photo_url} alt="" class="size-10 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <span class="size-10 rounded-full bg-fill shrink-0"></span>
+                      )}
+                      <span>
+                        <span class="block font-bold">{r.full_name}</span>
+                        <a href={`tel:${r.phone}`} class="block text-xs text-muted tabular no-underline">{prettyPhone(r.phone)}</a>
+                        <span class="block text-xs text-muted">Emergency: {r.emergency_name}, {prettyPhone(r.emergency_phone)}</span>
+                      </span>
+                    </span>
+                  </td>
+                  <td class="px-5 py-3 whitespace-nowrap">{zones.find((z) => z.id === r.zone_id)?.name}</td>
+                  <td class="px-5 py-3 whitespace-nowrap capitalize">{r.vehicle}{r.plate_number && <span class="block text-xs text-muted normal-case">{r.plate_number}</span>}</td>
+                  <td class="px-5 py-3 whitespace-nowrap">
+                    {r.is_online ? <span class="text-success font-semibold">Online</span> : <span class="text-muted">Offline</span>}
+                    {carrying > 0 && <span class="block text-xs text-muted">{carrying} active</span>}
+                  </td>
+                  <td class="px-5 py-3 tabular">{delivered.get(r.id) ?? 0}</td>
+                  <td class="px-5 py-3">
+                    <span class:list={['badge h-6 text-xs capitalize', badge[r.account.status]]}>{r.account.status}</span>
+                  </td>
+                  <td class="px-5 py-3 text-right whitespace-nowrap">
+                    {r.account.status === 'approved' && (
+                      <button type="button" class="btn btn-ghost min-h-9 text-sm text-danger" data-reason-open="suspend-dialog" data-id={r.account.id} data-name={r.full_name}>Suspend</button>
+                    )}
+                    {r.account.status === 'suspended' && (
+                      <form method="post" class="inline" data-confirm={`Reactivate ${r.full_name}?`} data-confirm-label="Reactivate">
+                        <input type="hidden" name="action" value="reactivate" />
+                        <input type="hidden" name="id" value={r.account.id} />
+                        <input type="hidden" name="name" value={r.full_name} />
+                        <button type="submit" class="btn btn-secondary min-h-9 text-sm">Reactivate</button>
+                      </form>
+                    )}
+                    {r.account.status === 'pending' && <a href="/admin/applications" class="btn btn-ghost min-h-9 text-sm">Review</a>}
+                  </td>
+                </tr>
+              );
+            })
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <ReasonDialog
+    id="suspend-dialog"
+    action="suspend"
+    title="Suspend rider"
+    confirmLabel="Suspend"
+    hint="They're taken offline and can't accept deliveries until you reactivate them."
+    placeholder="For example, failed to deliver orders"
+  />
+</PanelLayout>

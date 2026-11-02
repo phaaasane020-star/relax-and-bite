@@ -1,0 +1,255 @@
+---
+import { notifyNewApplication } from '../../../data/notify';
+import { clientInfo } from '../../../lib/client-info';
+import { audit } from '../../../data/store';
+import PartnerAuthLayout from '../../../layouts/PartnerAuthLayout.astro';
+import Icon from '../../../components/Icon.astro';
+import { getAllZones } from '../../../data/store';
+import { createSession, getSessionAccount, homeFor, registerRider, setAccountStatus, tempPassword } from '../../../data/partners';
+import PartnerCreated from '../../../components/panel/PartnerCreated.astro';
+import { prettyPhone } from '../../../lib/format';
+import { getPartnerToken, setPartnerToken } from '../../../lib/session';
+import type { VehicleType } from '../../../data/types';
+
+const existing = await getSessionAccount(getPartnerToken(Astro.cookies));
+// An admin can open this page with ?add=1 to add a rider in person (approved straight away)
+const adminAdding = existing?.role === 'admin' && existing.status === 'approved' && Astro.url.searchParams.get('add') === '1';
+if (existing && !adminAdding) return Astro.redirect(homeFor(existing));
+let created: { name: string; phone: string; password: string } | null = null;
+
+const zones = (await getAllZones()).filter((z) => z.is_active);
+let error = '';
+let v: Record<string, string> = { vehicle: 'motorbike' }; // no town chosen until they pick one
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const PHOTOS = ['photo_url', 'ghana_card_photo_url'];
+  v = Object.fromEntries([...form.entries()].map(([k, val]) => [k, PHOTOS.includes(k) ? String(val) : String(val).slice(0, 300)]));
+  try {
+    if (!v.zone_id) throw new Error('Choose your town.');
+    const password = adminAdding ? tempPassword() : v.password ?? '';
+    const account = await registerRider({
+      full_name: v.full_name ?? '',
+      phone: v.phone ?? '',
+      email: v.email ?? '',
+      password,
+      zone_id: Number(v.zone_id),
+      vehicle: (v.vehicle ?? 'motorbike') as VehicleType,
+      plate_number: v.plate_number ?? '',
+      licence_number: v.licence_number ?? '',
+      ghana_card: v.ghana_card ?? '',
+      photo_url: v.photo_url ?? '',
+      ghana_card_photo_url: v.ghana_card_photo_url ?? '',
+      emergency_name: v.emergency_name ?? '',
+      emergency_phone: v.emergency_phone ?? '',
+    }, { photosOptional: adminAdding });
+    if (adminAdding) {
+      await setAccountStatus(account.id, 'approved');
+      await audit(`${existing!.full_name} (admin)`, `Added the rider ${account.full_name} (${prettyPhone(account.phone)}) and approved them`, { kind: 'admin', ...clientInfo(Astro) });
+      created = { name: account.full_name, phone: account.phone, password };
+    } else {
+      setPartnerToken(Astro.cookies, await createSession(account.id, clientInfo(Astro)));
+      await notifyNewApplication('rider', account.full_name);
+      await audit(`${account.full_name} (rider)`, 'Applied to ride', { kind: 'register', severity: 'warning', ...clientInfo(Astro) });
+      return Astro.redirect('/partner/pending?new=1', 303);
+    }
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Could not register. Try again.';
+  }
+}
+---
+
+<PartnerAuthLayout title={adminAdding ? 'Add a rider' : 'Become a rider'} back={adminAdding ? '/admin/riders' : '/partner'}>
+  <div class="container-app pt-8 md:pt-12">
+    <div class="max-w-lg mx-auto">
+      <p class="text-sm font-bold text-brand">{adminAdding ? 'Admin' : 'Partner sign-up'}</p>
+      <h1 class="text-3xl font-extrabold tracking-tight mt-1">{adminAdding ? 'Add a rider' : 'Become a rider'}</h1>
+      <p class="text-muted mt-2">
+        {adminAdding
+          ? "Check their Ghana Card and licence first. They're approved straight away, and you'll get a temporary password to send them."
+          : 'Deliver food in your town and earn the delivery fee on every order.'}
+      </p>
+
+      {created && (
+        <div class="mt-8">
+          <PartnerCreated role="rider" name={created.name} phone={created.phone} password={created.password} doneHref="/admin/riders" againHref="/partner/register/rider?add=1" />
+        </div>
+      )}
+      {!created && (
+      <form method="post" class="mt-7 flex flex-col gap-5" novalidate>
+        {
+          error && (
+            <div role="alert" data-form-error class="flex gap-3 items-start p-4 rounded-xl bg-danger-soft text-danger">
+              <Icon name="alert" size={20} class="shrink-0 mt-0.5" />
+              <p class="text-sm font-semibold">{error}</p>
+            </div>
+          )
+        }
+
+        <!-- Your details -->
+        <div>
+          <label for="full_name" class="field-label">Full name</label>
+          <input id="full_name" name="full_name" class="field-input field-lg" required minlength="3" maxlength="80" autocomplete="name" value={v.full_name} />
+          <p class="field-hint">As it is on your Ghana Card.</p>
+        </div>
+        <div>
+          <label for="zone_id" class="field-label">Town</label>
+          <select id="zone_id" name="zone_id" class="field-input field-lg" required data-required-message="Choose your town.">
+            <option value="" disabled selected={!v.zone_id}>Choose your town</option>
+            {zones.map((z) => <option value={z.id} selected={String(z.id) === v.zone_id}>{z.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label for="phone" class="field-label">Phone number</label>
+          <input id="phone" name="phone" type="tel" inputmode="tel" class="field-input field-lg" required autocomplete="tel" value={v.phone} placeholder="055 123 4567" />
+          <p class="field-hint">{adminAdding ? 'They sign in with this number.' : 'You sign in with this number.'}</p>
+        </div>
+        <div>
+          <label for="email" class="field-label">Email <span class="text-muted font-medium">(optional)</span></label>
+          <input id="email" name="email" type="email" inputmode="email" class="field-input field-lg" autocomplete="email" autocapitalize="off" spellcheck="false" value={v.email} />
+          <p class="field-hint">For delivery alerts.</p>
+        </div>
+        <div>
+          <label for="ghana_card" class="field-label">Ghana Card number</label>
+          <input id="ghana_card" name="ghana_card" class="field-input field-lg tabular tracking-wide" required value={v.ghana_card} placeholder="GHA-123456789-0" inputmode="numeric" autocomplete="off" maxlength="15" data-ghana-card />
+        </div>
+
+        <!-- Vehicle -->
+        <fieldset class="flex flex-col gap-2">
+          <legend class="field-label">Vehicle</legend>
+          <div class="grid grid-cols-2 gap-3">
+            {
+              (['motorbike', 'bicycle'] as const).map((type) => (
+                <label class="flex items-center justify-center gap-2.5 h-14 rounded-[0.875rem] border border-line-strong font-bold capitalize cursor-pointer has-[:checked]:border-brand has-[:checked]:bg-brand-soft has-[:checked]:text-brand-ink">
+                  <input type="radio" name="vehicle" value={type} checked={v.vehicle === type} class="sr-only" />
+                  <Icon name="bike" size={20} /> {type}
+                </label>
+              ))
+            }
+          </div>
+        </fieldset>
+        <div class="flex flex-col gap-5" data-motorbike>
+          <div>
+            <label for="plate_number" class="field-label">Number plate</label>
+            <input id="plate_number" name="plate_number" class="field-input field-lg uppercase" value={v.plate_number} placeholder="CR 1234-21" />
+          </div>
+          <div>
+            <label for="licence_number" class="field-label">Driver's licence number</label>
+            <input id="licence_number" name="licence_number" class="field-input field-lg tabular tracking-wide" value={v.licence_number} autocomplete="off" autocapitalize="characters" maxlength="24" placeholder="As printed on your licence" data-licence />
+          </div>
+        </div>
+
+        <!-- Photos -->
+        <input type="hidden" name="photo_url" value={v.photo_url ?? ''} />
+        <input type="hidden" name="ghana_card_photo_url" value={v.ghana_card_photo_url ?? ''} />
+        <div class="flex flex-col gap-2">
+          <span class="field-label mb-0">Photos{adminAdding && <span class="text-muted font-medium"> (optional)</span>}</span>
+          <label class="flex items-center gap-4 p-3 rounded-[0.875rem] border border-line-strong cursor-pointer">
+            <span class="size-14 rounded-full overflow-hidden bg-fill shrink-0 flex items-center justify-center text-faint">
+              <img data-photo-preview="photo_url" src={v.photo_url || undefined} alt="" class="size-full object-cover" hidden={!v.photo_url} />
+              <span hidden={!!v.photo_url}><Icon name="user" size={26} strokeWidth={1.6} /></span>
+            </span>
+            <span class="flex-1 min-w-0">
+              <span class="block font-bold">Your face</span>
+              <span class="block text-sm text-muted">Clear photo, no cap or sunglasses</span>
+              <span data-photo-note="photo_url" hidden class="block text-sm font-semibold text-muted"></span>
+              <span data-photo-error="photo_url" hidden class="block text-sm font-semibold text-danger"></span>
+            </span>
+            <span class="text-sm font-bold text-brand shrink-0">Add</span>
+            <input type="file" accept="image/*" capture="user" class="sr-only" data-photo-for="photo_url" data-max="600" data-face-check />
+          </label>
+          <label class="flex items-center gap-4 p-3 rounded-[0.875rem] border border-line-strong cursor-pointer">
+            <span class="w-14 h-10 rounded-md overflow-hidden bg-fill shrink-0 flex items-center justify-center text-faint">
+              <img data-photo-preview="ghana_card_photo_url" src={v.ghana_card_photo_url || undefined} alt="" class="size-full object-cover" hidden={!v.ghana_card_photo_url} />
+              <span hidden={!!v.ghana_card_photo_url}><Icon name="card" size={22} strokeWidth={1.6} /></span>
+            </span>
+            <span class="flex-1 min-w-0">
+              <span class="block font-bold">Ghana Card, front</span>
+              <span class="block text-sm text-muted">Only our team sees this</span>
+              <span data-photo-error="ghana_card_photo_url" hidden class="block text-sm font-semibold text-danger"></span>
+            </span>
+            <span class="text-sm font-bold text-brand shrink-0">Add</span>
+            <input type="file" accept="image/*" capture="environment" class="sr-only" data-photo-for="ghana_card_photo_url" data-max="1200" />
+          </label>
+        </div>
+
+        <!-- Emergency contact -->
+        <div>
+          <label for="emergency_name" class="field-label">Emergency contact name</label>
+          <input id="emergency_name" name="emergency_name" class="field-input field-lg" required value={v.emergency_name} placeholder="Someone close to you" />
+        </div>
+        <div>
+          <label for="emergency_phone" class="field-label">Emergency contact phone</label>
+          <input
+            id="emergency_phone"
+            name="emergency_phone"
+            type="tel"
+            inputmode="tel"
+            class="field-input field-lg"
+            required
+            value={v.emergency_phone}
+            placeholder="024 123 4567"
+            data-different-from="phone"
+            data-same-message="This is your own number. Add the number of someone close to you."
+          />
+        </div>
+
+        {!adminAdding && (
+          <div>
+            <label for="password" class="field-label">Create a password</label>
+            <input id="password" name="password" type="password" class="field-input field-lg" required minlength="8" autocomplete="new-password" />
+            <p class="field-hint">At least 8 characters.</p>
+          </div>
+        )}
+
+        <button type="submit" class="btn btn-primary btn-lg w-full mt-2">{adminAdding ? 'Add and approve rider' : 'Submit application'}</button>
+        {!adminAdding && (
+          <>
+            <p class="text-[0.8125rem] text-muted text-center -mt-1">
+              By submitting, you confirm your details are correct and agree to the <a href="/terms#partners" target="_blank" class="font-semibold text-ink underline underline-offset-2">Terms</a> and <a href="/privacy" target="_blank" class="font-semibold text-ink underline underline-offset-2">Privacy Policy</a>.
+            </p>
+            <p class="text-sm text-muted text-center">Already a partner? <a href="/partner/login" class="font-bold text-brand">Sign in</a></p>
+          </>
+        )}
+      </form>
+      )}
+    </div>
+  </div>
+</PartnerAuthLayout>
+
+<script>
+  import { bindPhotoInputs } from '../../../lib/image';
+  import { bindGhanaCardInputs } from '../../../lib/ghana-card';
+  import { bindLicenceInputs } from '../../../lib/licence';
+  bindPhotoInputs();
+  bindGhanaCardInputs();
+  bindLicenceInputs();
+
+
+  // Hide plate and licence fields for bicycles
+  const block = document.querySelector<HTMLElement>('[data-motorbike]');
+  const radios = document.querySelectorAll<HTMLInputElement>('input[name="vehicle"]');
+  const sync = () => {
+    const bike = document.querySelector<HTMLInputElement>('input[name="vehicle"]:checked')?.value === 'bicycle';
+    if (block) block.hidden = bike;
+  };
+  radios.forEach((r) => r.addEventListener('change', sync));
+  sync();
+
+  // Stop the form if either phone number is wrong, and show why
+  const form = document.querySelector<HTMLFormElement>('form[method="post"]');
+  if (form) form.addEventListener('submit', (e) => {
+    const licence = form.querySelector<HTMLInputElement>('input[data-licence]');
+    const checks = [...form.querySelectorAll<HTMLInputElement>('input[type="tel"]')];
+    if (licence && !licence.closest('[hidden]')) checks.push(licence);
+    for (const box of checks) {
+      box.dispatchEvent(new Event('blur'));
+      if (box.value && !box.checkValidity()) {
+        e.preventDefault();
+        box.focus();
+        box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return;
+      }
+    }
+  });
+</script>

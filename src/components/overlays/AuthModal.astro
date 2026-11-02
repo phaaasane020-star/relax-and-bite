@@ -1,0 +1,132 @@
+---
+// Sign-in popup: Continue with Google, or an email address and then the 6-digit code from the email.
+import Icon from '../Icon.astro';
+import Logo from '../Logo.astro';
+import GoogleButton from '../GoogleButton.astro';
+import { getUser } from '../../lib/session';
+import { googleReady } from '../../data/customers';
+
+const signedIn = !!getUser(Astro.cookies);
+const google = googleReady();
+const how = google ? "Use Google, or we'll email you a 6-digit code." : "We'll email you a 6-digit code. No password needed.";
+---
+
+{
+  !signedIn && (
+    <dialog id="auth-modal" class="sheet" aria-labelledby="auth-title">
+      <div class="relative p-6 sm:p-8">
+        <button type="button" data-close class="icon-btn icon-btn-round border-0 absolute right-3 top-3" aria-label="Close">
+          <Icon name="x" size={22} />
+        </button>
+
+        <Logo size="sm" class="mb-6" />
+
+        <!-- Step 1: Google or email -->
+        <form data-step="email" class="flex flex-col gap-4" novalidate>
+          <div class="seg" role="tablist" aria-label="Sign in or sign up">
+            <button type="button" role="tab" data-mode-tab="signin" aria-selected="true">Sign in</button>
+            <button type="button" role="tab" data-mode-tab="signup" aria-selected="false">Sign up</button>
+          </div>
+          <div>
+            <h2 id="auth-title" data-auth-heading class="text-2xl font-extrabold tracking-tight">Welcome back</h2>
+            <p class="text-muted mt-1.5" data-auth-reason data-how={how}>{how}</p>
+          </div>
+          <p data-google-error role="alert" hidden class="p-3 rounded-lg bg-danger-soft text-danger text-sm font-semibold"></p>
+          <GoogleButton />
+          <div data-name-field hidden>
+            <label for="auth-name" class="field-label">Your name</label>
+            <input id="auth-name" name="name" type="text" autocomplete="name" maxlength="80" placeholder="Ama Mensah" class="field-input" />
+          </div>
+          <div>
+            <label for="auth-email" class="field-label">Email address</label>
+            <input id="auth-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" required placeholder="you@example.com" class="field-input" />
+            <p data-error role="alert" hidden class="text-sm font-semibold text-danger mt-1.5"></p>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg w-full">Sign in</button>
+          <p class="text-[0.8125rem] text-muted leading-relaxed">
+            If you sign up, our <a href="/terms" class="font-semibold text-ink underline underline-offset-2">Terms and Conditions</a>{' and '}<a href="/privacy" class="font-semibold text-ink underline underline-offset-2">Privacy Policy</a> apply.
+          </p>
+          <p class="text-sm text-muted pt-3 border-t border-line">
+            Vendor or rider? <a href="/partner/login" class="font-bold text-brand">Partner sign in</a>{' · '}<a href="/partner" class="font-bold text-brand">Join as a partner</a>
+          </p>
+        </form>
+
+        <!-- Step 2: code -->
+        <form data-step="code" hidden class="flex flex-col gap-4" novalidate>
+          <div>
+            <h2 class="text-2xl font-extrabold tracking-tight">Enter the code</h2>
+            <p data-existing-note hidden class="mt-2 p-3 rounded-lg bg-brand-tint text-sm text-ink-soft">You already have an account with this email, so we'll sign you in.</p>
+            <p class="text-muted mt-1.5">
+              We emailed a 6-digit code to <strong class="text-ink break-all" data-email-label></strong>. Check your spam folder if it isn't there.{' '}
+              <button type="button" data-change class="font-semibold text-brand">Change</button>
+            </p>
+          </div>
+          <div>
+            <label for="auth-code" class="field-label">6-digit code</label>
+            <input
+              id="auth-code"
+              name="code"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+              required
+              class="field-input text-center text-2xl font-bold tracking-[0.5em] tabular"
+            />
+            <p data-error role="alert" hidden class="text-sm font-semibold text-danger mt-1.5"></p>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg w-full">Verify and continue</button>
+          <p class="text-sm text-muted text-center">
+            Didn't get it?
+            <button type="button" data-resend class="font-bold text-brand disabled:text-faint" disabled>Resend code</button>
+            <span data-resend-timer class="tabular"></span>
+          </p>
+          <p data-test-code hidden class="p-3 rounded-lg bg-warning-soft text-warning-ink text-[0.8125rem]"></p>
+        </form>
+      </div>
+    </dialog>
+  )
+}
+
+<script>
+  import { bindEmailSignIn, bindGoogleButtons, googleProblem } from '../../lib/email-signin';
+
+  const modal = document.getElementById('auth-modal') as HTMLDialogElement | null;
+  if (modal) {
+    const emailForm = modal.querySelector<HTMLFormElement>('form[data-step="email"]')!;
+    const codeForm = modal.querySelector<HTMLFormElement>('form[data-step="code"]')!;
+    const reasonEl = modal.querySelector<HTMLElement>('[data-auth-reason]')!;
+    const googleError = modal.querySelector<HTMLElement>('[data-google-error]')!;
+    const nextUrl = () => {
+      const next = new URL(window.location.href).searchParams.get('next') || modal.dataset.next;
+      if (next && next.startsWith('/') && !next.startsWith('//')) return next;
+      const here = new URL(window.location.href);
+      ['signin', 'google', 'next'].forEach((k) => here.searchParams.delete(k));
+      return here.pathname + here.search;
+    };
+
+    const flow = bindEmailSignIn({
+      emailForm,
+      codeForm,
+      onSignedIn: () => window.location.replace(nextUrl()),
+    });
+    // Links with data-auth-mode="signup" open straight on Sign up
+    document.addEventListener('click', (e) => {
+      const t = (e.target as Element | null)?.closest<HTMLElement>('[data-open="auth"][data-auth-mode]');
+      if (t) modal.dataset.mode = t.dataset.authMode;
+    }, true);
+    bindGoogleButtons(modal, nextUrl);
+
+    const reset = () => {
+      const base = reasonEl.dataset.how ?? '';
+      reasonEl.textContent = modal.dataset.reason ? `${modal.dataset.reason} ${base}` : base;
+      const problem = googleProblem();
+      googleError.textContent = problem;
+      googleError.hidden = !problem;
+      flow.reset();
+      if (modal.dataset.mode === 'signup') flow.setMode('signup');
+      delete modal.dataset.mode;
+    };
+    modal.addEventListener('overlay:open', reset);
+    modal.addEventListener('close', reset);
+  }
+</script>

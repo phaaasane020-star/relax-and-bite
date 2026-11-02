@@ -1,0 +1,143 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import Icon from '../../components/Icon.astro';
+import FavouritesList from '../../components/FavouritesList.astro';
+import { getCustomerOrders, isActive, CUSTOMER_STATUS } from '../../data/store';
+import { getMyOrders, getUser } from '../../lib/session';
+import { dateTime, money } from '../../lib/format';
+import type { Order } from '../../data/types';
+
+// Orders for the signed-in phone number, plus any placed from this browser.
+const user = getUser(Astro.cookies);
+const orders = await getCustomerOrders(user?.id ?? null, getMyOrders(Astro.cookies));
+const active = orders.filter((o) => isActive(o.status));
+const past = orders.filter((o) => !isActive(o.status));
+
+const summary = (o: Order) => o.items.map((i) => `${i.quantity}× ${i.name}`).join(', ');
+const TABS = [
+  { key: 'active', label: 'Active', count: active.length },
+  { key: 'history', label: 'History', count: 0 },
+  { key: 'favourites', label: 'Favourites', count: 0 },
+] as const;
+const asked = Astro.url.searchParams.get('tab');
+const tab = TABS.some((t) => t.key === asked) ? asked! : 'active';
+
+const badge = (o: Order) =>
+  o.status === 'delivered' ? 'bg-success-soft text-success' : o.status === 'cancelled' ? 'bg-fill text-ink-soft' : 'bg-brand-soft text-brand-ink';
+---
+
+<AppLayout title="Orders" mobileHeader="none">
+  <div class="container-app pt-[calc(var(--sat)+1rem)] md:pt-10 pb-6">
+    <div class="flex items-center justify-between gap-3">
+      <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">My orders</h1>
+      <button type="button" data-refresh class="icon-btn icon-btn-round bg-fill border-0" aria-label="Refresh">
+        <Icon name="refresh" size={20} />
+      </button>
+    </div>
+
+    <div role="tablist" aria-label="Orders" class="seg mt-5 md:max-w-lg" data-order-tabs>
+      {
+        TABS.map((t) => (
+          <button type="button" role="tab" data-tab={t.key} aria-selected={t.key === tab ? 'true' : 'false'} aria-controls={`tab-${t.key}`} class="flex items-center justify-center gap-1.5">
+            {t.label}
+            {t.count > 0 && <span class="min-w-5 h-5 px-1.5 rounded-full text-[0.6875rem] font-extrabold flex items-center justify-center bg-brand text-on-brand">{t.count}</span>}
+          </button>
+        ))
+      }
+    </div>
+
+    <!-- Active -->
+    <section id="tab-active" role="tabpanel" data-panel="active" hidden={tab !== 'active'} class="mt-5">
+      {
+        active.length === 0 ? (
+          <div class="py-16 px-6 flex flex-col items-center text-center gap-2">
+            <span class="empty-tile"><Icon name="receipt" size={30} /></span>
+            <h2 class="text-lg font-extrabold mt-3">No active orders</h2>
+            <p class="text-muted">Orders you place show here while they're on the way.</p>
+            <a href="/" class="btn btn-primary mt-4">Browse restaurants</a>
+          </div>
+        ) : (
+          <ul class="stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {active.map((o) => (
+              <li>
+                <a href={`/orders/${o.code}`} class="card block p-4 no-underline text-ink border-brand ring-2 ring-brand-soft hover:bg-brand-tint">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="flex flex-col gap-0.5 min-w-0">
+                      <span class="font-bold">{o.vendor_name}</span>
+                      <span class="text-sm text-muted tabular">{o.code}</span>
+                    </div>
+                    <span class:list={['badge', badge(o)]}>{CUSTOMER_STATUS[o.status]}</span>
+                  </div>
+                  <p class="text-sm text-ink-soft mt-3 line-clamp-1">{summary(o)}</p>
+                  <div class="flex items-center justify-between mt-3 text-sm">
+                    <span class="font-bold text-brand flex items-center gap-1">
+                      Track order <Icon name="chevron-right" size={16} />
+                    </span>
+                    <span class="font-bold tabular">{money(o.total)}</span>
+                  </div>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </section>
+
+    <!-- History -->
+    <section id="tab-history" role="tabpanel" data-panel="history" hidden={tab !== 'history'} class="mt-5">
+      {
+        past.length === 0 ? (
+          <div class="py-16 px-6 flex flex-col items-center text-center gap-2">
+            <span class="empty-tile"><Icon name="clock" size={30} /></span>
+            <h2 class="text-lg font-extrabold mt-3">No past orders</h2>
+            <p class="text-muted">Delivered and cancelled orders show here.</p>
+          </div>
+        ) : (
+          <ul class="stagger card divide-y divide-line overflow-hidden">
+            {past.map((o) => (
+              <li>
+                <a href={`/orders/${o.code}`} class="flex gap-3 p-4 no-underline text-ink hover:bg-fill">
+                  <div class="flex-1 min-w-0 flex flex-col gap-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-bold">{o.vendor_name}</span>
+                      <span class:list={['badge h-6 text-xs', badge(o)]}>{CUSTOMER_STATUS[o.status]}</span>
+                    </div>
+                    <span class="text-sm text-ink-soft line-clamp-1">{summary(o)}</span>
+                    <span class="text-[0.8125rem] text-muted">
+                      {dateTime(o.created_at)}, {o.code}
+                    </span>
+                  </div>
+                  <div class="flex flex-col items-end justify-between">
+                    <span class="font-bold tabular">{money(o.total)}</span>
+                    <Icon name="chevron-right" size={18} class="text-faint" />
+                  </div>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </section>
+
+    <!-- Favourites -->
+    <section id="tab-favourites" role="tabpanel" data-panel="favourites" hidden={tab !== 'favourites'} class="mt-5">
+      <FavouritesList />
+    </section>
+  </div>
+</AppLayout>
+
+<script>
+  const tabs = document.querySelectorAll<HTMLButtonElement>('[data-order-tabs] [data-tab]');
+  tabs.forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.tab!;
+      tabs.forEach((b) => b.setAttribute('aria-selected', String(b === btn)));
+      document.querySelectorAll<HTMLElement>('[data-panel]').forEach((p) => (p.hidden = p.dataset.panel !== key));
+      const url = new URL(location.href);
+      if (key === 'active') url.searchParams.delete('tab');
+      else url.searchParams.set('tab', key);
+      history.replaceState(null, '', url);
+    }),
+  );
+  document.querySelector('[data-refresh]')?.addEventListener('click', () => location.reload());
+</script>

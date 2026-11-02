@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Relax&Bite is white: white bars with dark icons, red for actions. -->
+
+    <!-- Base application theme (icon colours and newer-Android settings are set in MainActivity) -->
+    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">#3F292B</item>
+        <item name="colorPrimaryDark">#3F292B</item>
+        <item name="colorAccent">#EF4444</item>
+        <item name="android:windowBackground">@color/rb_light</item>
+        <item name="android:statusBarColor">@color/rb_light</item>
+        <item name="android:navigationBarColor">@color/rb_light</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <!-- The theme the app runs with -->
+    <style name="AppTheme.NoActionBar" parent="AppTheme">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:background">@null</item>
+    </style>
+
+    <!-- While the app is starting: plain white with no icon, the same white the
+         intro starts on, so tapping the app icon goes straight into it
+         (rb_orange keeps its old name) -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@color/rb_orange</item>
+        <item name="windowSplashScreenBackground">@color/rb_orange</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+        <item name="windowSplashScreenAnimationDuration">0</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+        <item name="android:statusBarColor">@color/rb_orange</item>
+        <item name="android:navigationBarColor">@color/rb_orange</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <color name="rb_light">#FFFFFF</color>
+    <color name="rb_bars">#3F292B</color>
+    <color name="rb_page">#FFFFFF</color>
+    <color name="rb_orange">#FFFFFF</color>
+</resources>

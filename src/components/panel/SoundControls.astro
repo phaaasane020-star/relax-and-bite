@@ -1,0 +1,43 @@
+---
+// "Sound alerts on/off" button, plus a bar asking for one tap when the
+// browser is holding sound back. Used on the vendor and rider boards.
+interface Props {
+  class?: string;
+}
+const { class: className } = Astro.props;
+---
+
+<div class:list={['flex flex-col gap-3', className]}>
+  <button type="button" data-sound-toggle aria-pressed="true" class="self-start h-9 px-3 rounded-full border border-line-strong bg-raised text-sm font-semibold flex items-center gap-2">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9H3v6h3l5 4V5z"></path><path data-wave d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"></path><path data-mute hidden d="m16 9 5 6M21 9l-5 6"></path></svg>
+    <span data-sound-label>Order sound: On</span>
+  </button>
+</div>
+<button type="button" data-sound-blocked hidden class="mt-4 w-full p-3.5 rounded-xl bg-warning-soft text-warning-ink font-bold text-left flex items-center gap-2.5">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9H3v6h3l5 4V5z"></path><path d="M16 9a4 4 0 0 1 0 6"></path></svg>
+  Tap here so you can hear new orders
+</button>
+
+<script>
+  import { setSound, soundBlocked, soundOn, unlockSoundOnTap } from '../../lib/panel-alerts';
+
+  const toggle = document.querySelector<HTMLButtonElement>('[data-sound-toggle]');
+  const blocked = document.querySelector<HTMLButtonElement>('[data-sound-blocked]');
+  if (toggle && blocked) {
+    const paint = () => {
+      const on = soundOn();
+      toggle.setAttribute('aria-pressed', String(on));
+      toggle.querySelector('[data-sound-label]')!.textContent = on ? 'Order sound: On' : 'Order sound: Off';
+      toggle.querySelector('[data-wave]')!.toggleAttribute('hidden', !on);
+      toggle.querySelector('[data-mute]')!.toggleAttribute('hidden', on);
+      blocked.hidden = !(on && soundBlocked());
+    };
+    toggle.addEventListener('click', () => {
+      setSound(!soundOn());
+      paint();
+    });
+    blocked.addEventListener('click', () => (blocked.hidden = true));
+    unlockSoundOnTap(paint);
+    paint();
+  }
+</script>
