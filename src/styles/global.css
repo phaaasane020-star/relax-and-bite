@@ -2888,3 +2888,75 @@ html.is-drag-scrolling * {
     animation: none;
   }
 }
+
+
+/* =========================================================
+   Quick guide (first visit to Home on a phone): the page dims, one part
+   is lit up, and a card explains it. See lib/tour.ts.
+   ========================================================= */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+.tour-hole {
+  position: absolute;
+  box-shadow: 0 0 0 200vmax rgb(63 41 43 / 0.62);
+  outline: 2px solid #fff;
+  outline-offset: 0;
+  transition:
+    left 260ms var(--ease-out, ease),
+    top 260ms var(--ease-out, ease),
+    width 260ms var(--ease-out, ease),
+    height 260ms var(--ease-out, ease);
+  pointer-events: none;
+}
+.tour-card {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  padding: 1.125rem 1.125rem 1rem;
+  border-radius: 1.25rem;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 16px 40px -12px rgb(0 0 0 / 0.35);
+  transition: top 260ms var(--ease-out, ease);
+}
+.tour-count {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-brand);
+}
+.tour-title {
+  margin-top: 0.25rem;
+  font-size: 1.125rem;
+  font-weight: 800;
+}
+.tour-text {
+  margin-top: 0.25rem;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: var(--color-ink-soft);
+}
+.tour-actions {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.tour-skip {
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: var(--color-muted);
+  padding: 0.5rem 0.25rem;
+}
+.tour-next {
+  min-width: 7rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-hole,
+  .tour-card {
+    transition: none;
+  }
+}

@@ -27,6 +27,7 @@ const items = [
       <a
         href={item.href}
         data-open={item.open}
+        data-tour={`tab-${item.label.toLowerCase()}`}
         aria-current={item.active ? 'page' : undefined}
         class:list={[
           'h-16 flex flex-col items-center justify-center gap-1 text-[0.6875rem] min-[380px]:text-xs no-underline',

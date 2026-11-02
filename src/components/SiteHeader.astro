@@ -31,6 +31,7 @@ const locationHref = `/location?next=${encodeURIComponent(here)}`;
     <a
       href={locationHref}
       data-open="location"
+      data-tour="town"
       class="order-1 md:order-none flex flex-col min-w-0 flex-1 md:flex-none md:max-w-64 no-underline text-ink leading-tight"
       aria-label={zone ? `Deliver to ${locationLabel}. Change town` : 'Choose your town'}
     >
@@ -48,7 +49,7 @@ const locationHref = `/location?next=${encodeURIComponent(here)}`;
          On phones the box opens the Search page (recent searches, popular
          food types, results as you type); bigger screens type right here. -->
     <form action="/search" method="get" role="search" class:list={['order-3 md:order-none basis-full md:basis-auto md:flex-1 md:max-w-xl', mobile === 'top' && 'hidden md:block']}>
-      <a href={query ? `/search?q=${encodeURIComponent(query)}` : '/search'} class="search-box md:hidden flex items-center gap-2.5 h-12 px-4 bg-fill rounded-full text-muted no-underline" aria-label="Search food or restaurants">
+      <a href={query ? `/search?q=${encodeURIComponent(query)}` : '/search'} class="search-box md:hidden flex items-center gap-2.5 h-12 px-4 bg-fill rounded-full text-muted no-underline" aria-label="Search food or restaurants" data-tour="search">
         <Icon name="search" size={20} class="shrink-0" />
         <span data-search-hint aria-hidden="true" class="search-hint relative flex-1 min-w-0 h-full flex items-center text-[0.9375rem] overflow-hidden">
           {query ? <span class="truncate text-ink">{query}</span> : <span data-hint-text class="truncate text-faint">{hints[0]}</span>}
@@ -91,7 +92,7 @@ const locationHref = `/location?next=${encodeURIComponent(here)}`;
       <a href="/orders" class="icon-btn icon-btn-round" aria-label="Order updates">
         <Icon name="bell" size={21} strokeWidth={1.8} />
       </a>
-      <a href="/cart" data-open="cart" data-fly-target class="icon-btn icon-btn-round relative" aria-label="Cart">
+      <a href="/cart" data-open="cart" data-fly-target data-tour="cart" class="icon-btn icon-btn-round relative" aria-label="Cart">
         <Icon name="bag" size={21} strokeWidth={1.8} />
         <span
           data-cart-count

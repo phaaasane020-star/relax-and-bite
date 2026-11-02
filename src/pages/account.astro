@@ -57,6 +57,7 @@ const links = [
   { href: '/orders', icon: 'receipt', label: 'My orders', detail: 'Track an order or order again', open: undefined },
   { href: '/account/notifications', icon: 'bell', label: 'Notifications', detail: 'Order and rider updates on this phone', open: undefined },
   { href: '/help', icon: 'help', label: 'Help and support', detail: 'Questions, refunds and contact', open: undefined },
+  { href: '/?tour=1', icon: 'info', label: 'How the app works', detail: 'See the quick guide again', open: undefined },
   { href: '/privacy', icon: 'shield', label: 'Privacy Policy', detail: 'What we collect and why', open: undefined },
   { href: '/terms', icon: 'document', label: 'Terms and Conditions', detail: 'The rules for using Relax&Bite', open: undefined },
 ] as const;
@@ -64,6 +65,7 @@ const links = [
 // Signed out: the same menu, without the account items
 const guestLinks = [
   { href: '/help', icon: 'help', label: 'Help and support', detail: 'Questions, refunds and contact', open: undefined },
+  { href: '/?tour=1', icon: 'info', label: 'How the app works', detail: 'See the quick guide again', open: undefined },
   { href: '/privacy', icon: 'shield', label: 'Privacy Policy', open: undefined },
   { href: '/terms', icon: 'document', label: 'Terms and Conditions', open: undefined },
 ] as const;
